@@ -1,5 +1,6 @@
 import express from "express";
 import sql from "../db/index.js";
+import billingRouter from "./billing.js";
 import cron from "node-cron";
 import "dotenv/config";
 
@@ -7,6 +8,7 @@ const app = express();
 const PORT = parseInt(process.env.PORT || "3001");
 
 app.use(express.json());
+app.use("/api/billing", billingRouter);
 
 // GET /api/accounts — todas las cuentas
 app.get("/api/accounts", async (_req, res) => {

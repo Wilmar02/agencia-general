@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
-import { DollarSign, Users, MessageCircle, ShoppingCart, TrendingUp, AlertTriangle } from "lucide-react";
+import { DollarSign, Users, MessageCircle, ShoppingCart, TrendingUp, AlertTriangle, BarChart3, FileText } from "lucide-react";
 import SpendChart from "./components/SpendChart.js";
 import AccountCard from "./components/AccountCard.js";
+import Billing from "./pages/Billing.js";
 
 interface DashboardData {
   totalSpendCOP: number;
@@ -18,6 +19,7 @@ function fmt(val: number, currency: string) {
 }
 
 export default function App() {
+  const [page, setPage] = useState<"dashboard" | "billing">("dashboard");
   const [data, setData] = useState<DashboardData | null>(null);
   const [days, setDays] = useState(7);
   const [loading, setLoading] = useState(true);
@@ -41,22 +43,37 @@ export default function App() {
       {/* Header */}
       <header className="border-b border-gray-800 px-6 py-4">
         <div className="flex items-center justify-between max-w-7xl mx-auto">
-          <h1 className="text-xl font-bold">Agencia General</h1>
-          <div className="flex gap-2">
-            {[7, 14, 30].map(d => (
-              <button
-                key={d}
-                onClick={() => setDays(d)}
-                className={`px-3 py-1 rounded text-sm ${days === d ? "bg-blue-600" : "bg-gray-800 hover:bg-gray-700"}`}
-              >
-                {d}d
+          <div className="flex items-center gap-6">
+            <h1 className="text-xl font-bold">Agencia General</h1>
+            <nav className="flex gap-1">
+              <button onClick={() => setPage("dashboard")} className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm ${page === "dashboard" ? "bg-blue-600" : "bg-gray-800 hover:bg-gray-700"}`}>
+                <BarChart3 size={14} /> Ads
               </button>
-            ))}
+              <button onClick={() => setPage("billing")} className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm ${page === "billing" ? "bg-blue-600" : "bg-gray-800 hover:bg-gray-700"}`}>
+                <FileText size={14} /> Facturación
+              </button>
+            </nav>
           </div>
+          {page === "dashboard" && (
+            <div className="flex gap-2">
+              {[7, 14, 30].map(d => (
+                <button
+                  key={d}
+                  onClick={() => setDays(d)}
+                  className={`px-3 py-1 rounded text-sm ${days === d ? "bg-blue-600" : "bg-gray-800 hover:bg-gray-700"}`}
+                >
+                  {d}d
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </header>
 
       <main className="max-w-7xl mx-auto px-6 py-6 space-y-6">
+        {page === "billing" && <Billing />}
+
+        {page === "dashboard" && <>
         {/* KPI Cards */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           <KPICard icon={<DollarSign size={20} />} label="Gasto COP" value={fmt(data.totalSpendCOP, "COP")} color="red" />
@@ -88,6 +105,7 @@ export default function App() {
             </div>
           </section>
         )}
+        </>}
       </main>
     </div>
   );
