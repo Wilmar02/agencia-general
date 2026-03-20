@@ -1,0 +1,42 @@
+{
+  "name": "agencia-general",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:api\" \"npm run dev:client\"",
+    "dev:api": "tsx watch src/api/index.ts",
+    "dev:client": "vite",
+    "build": "vite build && tsx src/api/index.ts",
+    "db:migrate": "tsx src/db/migrate.ts",
+    "db:seed": "tsx src/db/seed.ts",
+    "sync:meta": "tsx src/jobs/sync-meta.ts",
+    "sync:google": "tsx src/jobs/sync-google.ts"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "postgres": "^3.4.7",
+    "dotenv": "^16.4.7",
+    "node-cron": "^3.0.3",
+    "recharts": "^2.15.3",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-router-dom": "^7.6.0",
+    "lucide-react": "^0.511.0",
+    "date-fns": "^4.1.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.2",
+    "@types/node": "^22.15.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^4.4.1",
+    "autoprefixer": "^10.4.21",
+    "concurrently": "^9.1.2",
+    "postcss": "^8.5.3",
+    "tailwindcss": "^4.1.4",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.5"
+  }
+}
