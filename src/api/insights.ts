@@ -69,13 +69,9 @@ function computeScore(
   const currency = acc.currency;
   const tipo = acc.tipo;
 
-  // Has conversions? (+30)
   if (conv > 0) score += 30;
-
-  // CTR above 1%? (+20)
   if (ctr > 1) score += 20;
 
-  // Cost per conversion within threshold? (+30)
   if (conv > 0) {
     if (tipo === "leads") {
       const threshold = currency === "COP" ? 25000 : 8;
@@ -92,7 +88,6 @@ function computeScore(
     }
   }
 
-  // Trend improving vs last period? (+20)
   if (prev) {
     const prevCpc = Number(prev.cost_per_conv);
     const prevConv = Number(prev.conversions);
@@ -121,7 +116,6 @@ function generateAlerts(
   const prevCpc = previous ? Number(previous.cost_per_conv) : 0;
   const prevCtr = previous ? Number(previous.ctr) : 0;
 
-  // Account with no spend
   if (spend === 0) {
     alerts.push({
       account: name,
@@ -135,7 +129,6 @@ function generateAlerts(
     return alerts;
   }
 
-  // Spending but zero conversions → critical
   if (spend > 0 && conv === 0) {
     alerts.push({
       account: name,
@@ -148,7 +141,6 @@ function generateAlerts(
     });
   }
 
-  // CPL/CPC rose more than 30%
   if (prevCpc > 0 && cpc > 0) {
     const cpcChange = pctChange(cpc, prevCpc);
     if (cpcChange > 30) {
@@ -164,7 +156,6 @@ function generateAlerts(
     }
   }
 
-  // CTR dropped below 0.8%
   if (ctr < 0.8 && spend > 0 && conv > 0) {
     alerts.push({
       account: name,
@@ -177,7 +168,6 @@ function generateAlerts(
     });
   }
 
-  // Spend increased >40% but conversions didn't keep up
   if (prevSpend > 0 && prevConv > 0) {
     const spendChange = pctChange(spend, prevSpend);
     const convChange = pctChange(conv, prevConv);
@@ -197,15 +187,47 @@ function generateAlerts(
   return alerts;
 }
 
+async function persistAlerts(alerts: Alert[], days: number) {
+  for (const alert of alerts) {
+    if (alert.severity === "info") continue; // don't persist info alerts
+
+    // Dedup: check if same alert exists in last 24h
+    const existing = await sql`
+      SELECT id FROM alerts
+      WHERE account_id = ${alert.accountId}
+        AND type = ${alert.type}
+        AND resolved = false
+        AND created_at > now() - interval '24 hours'
+      LIMIT 1
+    `;
+    if (existing.length > 0) continue;
+
+    await sql`
+      INSERT INTO alerts (account_id, type, message, priority, severity, suggestion, alert_type, period_days)
+      VALUES (${alert.accountId}, ${alert.type}, ${alert.message}, ${alert.severity}, ${alert.severity}, ${alert.suggestion}, ${alert.type}, ${days})
+    `;
+  }
+
+  // Mark alerts as resolved if their account no longer has them
+  const activeAccountIds = new Set(alerts.map(a => a.accountId));
+  const activeTypes = new Set(alerts.map(a => `${a.accountId}:${a.type}`));
+
+  const unresolvedAlerts = await sql`
+    SELECT id, account_id, type FROM alerts WHERE resolved = false
+  `;
+
+  for (const ua of unresolvedAlerts) {
+    const key = `${ua.account_id}:${ua.type}`;
+    if (activeAccountIds.has(ua.account_id) && !activeTypes.has(key)) {
+      await sql`UPDATE alerts SET resolved = true, resolved_at = now() WHERE id = ${ua.id}`;
+    }
+  }
+}
+
 async function fetchPeriodMetrics(
   days: number,
   offsetDays: number,
 ): Promise<AccountMetrics[]> {
-  // offset=0: current period includes today
-  // For days=1,offset=0 → only today (date = CURRENT_DATE)
-  // For days=1,offset=1 → only yesterday
-  // For days=7,offset=0 → last 7 days including today
-  // For days=7,offset=7 → 7 days before that
   const rows = await sql`
     SELECT
       a.id, a.name, a.platform, a.currency, a.tipo,
@@ -231,7 +253,6 @@ async function fetchPeriodMetrics(
 router.get("/insights", async (req, res) => {
   try {
     const rawDays = parseInt(req.query.days as string) || 7;
-    // days=-1 means "yesterday only" → fetch 1 day with offset 1
     const isYesterday = rawDays < 0;
     const days = isYesterday ? 1 : rawDays;
     const offset = isYesterday ? 1 : 0;
@@ -249,14 +270,11 @@ router.get("/insights", async (req, res) => {
     for (const acc of current) {
       const prev = prevMap.get(acc.id) || null;
 
-      // Generate alerts
       const accountAlerts = generateAlerts(acc, prev);
       alerts.push(...accountAlerts);
 
-      // Compute score
       const score = computeScore(acc, prev);
 
-      // Compute trend text
       const prevCpc = prev ? Number(prev.cost_per_conv) : 0;
       const curCpc = Number(acc.cost_per_conv);
       let trend = "sin datos";
@@ -302,6 +320,11 @@ router.get("/insights", async (req, res) => {
       (a, b) => severityOrder[a.severity] - severityOrder[b.severity],
     );
 
+    // Persist alerts to DB (async, don't block response)
+    persistAlerts(alerts, days).catch(err =>
+      console.error("Error persisting alerts:", err.message)
+    );
+
     // Week over week totals
     const curTotalSpend = current.reduce((s, a) => s + Number(a.spend), 0);
     const prevTotalSpend = previous.reduce((s, a) => s + Number(a.spend), 0);
@@ -322,7 +345,6 @@ router.get("/insights", async (req, res) => {
     const leadsChange = pctChange(curTotalConv, prevTotalConv);
     const cplChange = pctChange(curAvgCpl, prevAvgCpl);
 
-    // Direction: worse if spend up and conversions down, or CPL up significantly
     let direction: "better" | "worse" | "stable" = "stable";
     if (cplChange > 15 || (spendChange > 10 && leadsChange < -5))
       direction = "worse";
@@ -339,12 +361,10 @@ router.get("/insights", async (req, res) => {
       previousConversions: prevTotalConv,
     };
 
-    // Top performers (score > 70, sorted by score desc)
     const topPerformers = performanceScores
       .filter((p) => p.status === "good")
       .sort((a, b) => b.score - a.score);
 
-    // Needs attention (score <= 70 or has high/critical alerts)
     const alertAccountIds = new Set(
       alerts
         .filter((a) => a.severity === "critical" || a.severity === "high")

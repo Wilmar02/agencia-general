@@ -99,12 +99,134 @@ app.get("/api/campaigns/:accountId", async (req, res) => {
   res.json(rows);
 });
 
+// GET /api/adsets/:accountId?days=7&campaign_id=X — ad sets por cuenta
+app.get("/api/adsets/:accountId", async (req, res) => {
+  const days = parseInt(req.query.days as string) || 7;
+  const campaignId = req.query.campaign_id as string | undefined;
+
+  const rows = campaignId
+    ? await sql`
+        SELECT adset_name, adset_id, MAX(campaign_id) as campaign_id,
+          SUM(spend)::numeric as spend, SUM(impressions)::int as impressions,
+          SUM(clicks)::int as clicks, COALESCE(SUM(reach), 0)::int as reach,
+          CASE WHEN SUM(impressions) > 0 THEN (SUM(clicks)::numeric/SUM(impressions)*100) ELSE 0 END as ctr,
+          CASE WHEN SUM(impressions) > 0 THEN (SUM(spend)/SUM(impressions)*1000) ELSE 0 END as cpm,
+          CASE WHEN SUM(clicks) > 0 THEN (SUM(spend)/SUM(clicks)) ELSE 0 END as cpc,
+          CASE WHEN COALESCE(SUM(reach), 0) > 0 THEN (SUM(impressions)::numeric/SUM(reach)) ELSE 0 END as frequency,
+          SUM(conversions)::int as conversions,
+          CASE WHEN SUM(conversions) > 0 THEN SUM(spend)/SUM(conversions) ELSE 0 END as cost_per_conv,
+          COALESCE(SUM(conv_value), 0)::numeric as conv_value,
+          CASE WHEN SUM(spend) > 0 AND COALESCE(SUM(conv_value), 0) > 0 THEN SUM(conv_value)/SUM(spend) ELSE 0 END as roas,
+          MAX(daily_budget)::numeric as daily_budget,
+          MAX(lifetime_budget)::numeric as lifetime_budget,
+          MAX(status) as status
+        FROM adsets_daily
+        WHERE ad_account_id = ${req.params.accountId}
+        AND date >= CURRENT_DATE - ${days}::int
+        AND campaign_id = ${campaignId}
+        GROUP BY adset_name, adset_id
+        ORDER BY SUM(spend) DESC
+      `
+    : await sql`
+        SELECT adset_name, adset_id, MAX(campaign_id) as campaign_id,
+          SUM(spend)::numeric as spend, SUM(impressions)::int as impressions,
+          SUM(clicks)::int as clicks, COALESCE(SUM(reach), 0)::int as reach,
+          CASE WHEN SUM(impressions) > 0 THEN (SUM(clicks)::numeric/SUM(impressions)*100) ELSE 0 END as ctr,
+          CASE WHEN SUM(impressions) > 0 THEN (SUM(spend)/SUM(impressions)*1000) ELSE 0 END as cpm,
+          CASE WHEN SUM(clicks) > 0 THEN (SUM(spend)/SUM(clicks)) ELSE 0 END as cpc,
+          CASE WHEN COALESCE(SUM(reach), 0) > 0 THEN (SUM(impressions)::numeric/SUM(reach)) ELSE 0 END as frequency,
+          SUM(conversions)::int as conversions,
+          CASE WHEN SUM(conversions) > 0 THEN SUM(spend)/SUM(conversions) ELSE 0 END as cost_per_conv,
+          COALESCE(SUM(conv_value), 0)::numeric as conv_value,
+          CASE WHEN SUM(spend) > 0 AND COALESCE(SUM(conv_value), 0) > 0 THEN SUM(conv_value)/SUM(spend) ELSE 0 END as roas,
+          MAX(daily_budget)::numeric as daily_budget,
+          MAX(lifetime_budget)::numeric as lifetime_budget,
+          MAX(status) as status
+        FROM adsets_daily
+        WHERE ad_account_id = ${req.params.accountId}
+        AND date >= CURRENT_DATE - ${days}::int
+        GROUP BY adset_name, adset_id
+        ORDER BY SUM(spend) DESC
+      `;
+  res.json(rows);
+});
+
+// GET /api/ads/:accountId?days=7&adset_id=X — anuncios por cuenta
+app.get("/api/ads/:accountId", async (req, res) => {
+  const days = parseInt(req.query.days as string) || 7;
+  const adsetId = req.query.adset_id as string | undefined;
+
+  const rows = adsetId
+    ? await sql`
+        SELECT ad_name, ad_id, MAX(adset_id) as adset_id, MAX(campaign_id) as campaign_id,
+          SUM(spend)::numeric as spend, SUM(impressions)::int as impressions,
+          SUM(clicks)::int as clicks, COALESCE(SUM(reach), 0)::int as reach,
+          CASE WHEN SUM(impressions) > 0 THEN (SUM(clicks)::numeric/SUM(impressions)*100) ELSE 0 END as ctr,
+          CASE WHEN SUM(impressions) > 0 THEN (SUM(spend)/SUM(impressions)*1000) ELSE 0 END as cpm,
+          CASE WHEN SUM(clicks) > 0 THEN (SUM(spend)/SUM(clicks)) ELSE 0 END as cpc,
+          CASE WHEN COALESCE(SUM(reach), 0) > 0 THEN (SUM(impressions)::numeric/SUM(reach)) ELSE 0 END as frequency,
+          SUM(conversions)::int as conversions,
+          CASE WHEN SUM(conversions) > 0 THEN SUM(spend)/SUM(conversions) ELSE 0 END as cost_per_conv,
+          COALESCE(SUM(conv_value), 0)::numeric as conv_value,
+          CASE WHEN SUM(spend) > 0 AND COALESCE(SUM(conv_value), 0) > 0 THEN SUM(conv_value)/SUM(spend) ELSE 0 END as roas,
+          MAX(thumbnail_url) as thumbnail_url,
+          MAX(body_text) as body_text,
+          MAX(title) as title,
+          MAX(creative_type) as creative_type,
+          MAX(call_to_action) as call_to_action,
+          MAX(status) as status
+        FROM ads_daily
+        WHERE ad_account_id = ${req.params.accountId}
+        AND date >= CURRENT_DATE - ${days}::int
+        AND adset_id = ${adsetId}
+        GROUP BY ad_name, ad_id
+        ORDER BY SUM(spend) DESC
+      `
+    : await sql`
+        SELECT ad_name, ad_id, MAX(adset_id) as adset_id, MAX(campaign_id) as campaign_id,
+          SUM(spend)::numeric as spend, SUM(impressions)::int as impressions,
+          SUM(clicks)::int as clicks, COALESCE(SUM(reach), 0)::int as reach,
+          CASE WHEN SUM(impressions) > 0 THEN (SUM(clicks)::numeric/SUM(impressions)*100) ELSE 0 END as ctr,
+          CASE WHEN SUM(impressions) > 0 THEN (SUM(spend)/SUM(impressions)*1000) ELSE 0 END as cpm,
+          CASE WHEN SUM(clicks) > 0 THEN (SUM(spend)/SUM(clicks)) ELSE 0 END as cpc,
+          CASE WHEN COALESCE(SUM(reach), 0) > 0 THEN (SUM(impressions)::numeric/SUM(reach)) ELSE 0 END as frequency,
+          SUM(conversions)::int as conversions,
+          CASE WHEN SUM(conversions) > 0 THEN SUM(spend)/SUM(conversions) ELSE 0 END as cost_per_conv,
+          COALESCE(SUM(conv_value), 0)::numeric as conv_value,
+          CASE WHEN SUM(spend) > 0 AND COALESCE(SUM(conv_value), 0) > 0 THEN SUM(conv_value)/SUM(spend) ELSE 0 END as roas,
+          MAX(thumbnail_url) as thumbnail_url,
+          MAX(body_text) as body_text,
+          MAX(title) as title,
+          MAX(creative_type) as creative_type,
+          MAX(call_to_action) as call_to_action,
+          MAX(status) as status
+        FROM ads_daily
+        WHERE ad_account_id = ${req.params.accountId}
+        AND date >= CURRENT_DATE - ${days}::int
+        GROUP BY ad_name, ad_id
+        ORDER BY SUM(spend) DESC
+      `;
+  res.json(rows);
+});
+
 // GET /api/alerts — alertas recientes
 app.get("/api/alerts", async (_req, res) => {
   const rows = await sql`
     SELECT al.*, a.name as account_name
     FROM alerts al JOIN ad_accounts a ON al.account_id = a.id
     ORDER BY al.created_at DESC LIMIT 50
+  `;
+  res.json(rows);
+});
+
+// GET /api/alerts/history?days=30 — historial de alertas
+app.get("/api/alerts/history", async (req, res) => {
+  const days = parseInt(req.query.days as string) || 30;
+  const rows = await sql`
+    SELECT al.*, a.name as account_name
+    FROM alerts al JOIN ad_accounts a ON al.account_id = a.id
+    WHERE al.created_at >= CURRENT_DATE - ${days}::int
+    ORDER BY al.created_at DESC
   `;
   res.json(rows);
 });
@@ -126,24 +248,31 @@ app.post("/api/sync/now", async (_req, res) => {
   }
 });
 
-// Auto-sync cada hora (últimos 3 días para capturar correcciones de Meta)
+// Auto-sync cada hora (Meta + Google, últimos 3 días)
 cron.schedule("0 * * * *", async () => {
   console.log(`[CRON] Auto-sync iniciado ${new Date().toISOString()}`);
   try {
     const { syncMeta } = await import("../jobs/sync-meta.js");
     await syncMeta(3);
-    console.log(`[CRON] Auto-sync completado`);
+    console.log(`[CRON] Meta sync completado`);
   } catch (err: any) {
-    console.error(`[CRON] Error: ${err.message}`);
+    console.error(`[CRON] Error Meta: ${err.message}`);
+  }
+  try {
+    const { syncGoogle } = await import("../jobs/sync-google.js");
+    await syncGoogle(3);
+    console.log(`[CRON] Google sync completado`);
+  } catch (err: any) {
+    console.error(`[CRON] Error Google: ${err.message}`);
   }
 });
 
-// SPA fallback
+// SPA fallback — must be last
 app.use((_req, res) => {
   res.sendFile(path.join(__dirname, "../../dist/index.html"));
 });
 
 app.listen(PORT, () => {
   console.log(`API corriendo en http://localhost:${PORT}`);
-  console.log(`Auto-sync Meta: cada hora (últimos 3 días)`);
+  console.log(`Auto-sync Meta + Google: cada hora (últimos 3 días)`);
 });
