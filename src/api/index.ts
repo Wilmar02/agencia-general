@@ -11,7 +11,12 @@ const app = express();
 const PORT = parseInt(process.env.PORT || "3001");
 
 app.use(express.json());
-app.use(express.static(path.join(__dirname, "../../dist")));
+app.use(express.static(path.join(__dirname, "../../dist"), {
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith(".js")) res.setHeader("Content-Type", "application/javascript");
+    if (filePath.endsWith(".css")) res.setHeader("Content-Type", "text/css");
+  }
+}));
 app.use("/api/billing", billingRouter);
 
 // GET /api/accounts — todas las cuentas

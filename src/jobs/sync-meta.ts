@@ -49,7 +49,7 @@ async function syncMeta() {
 
   for (const acc of accounts) {
     try {
-      const url = `https://graph.facebook.com/${API_VERSION}/${acc.account_id}/insights?fields=${FIELDS}&date_preset=last_7d&access_token=${META_TOKEN}`;
+      const url = `https://graph.facebook.com/${API_VERSION}/${acc.account_id}/insights?fields=${FIELDS}&date_preset=last_30d&time_increment=1&access_token=${META_TOKEN}`;
       const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
       const json = await res.json();
 
