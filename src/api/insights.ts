@@ -201,6 +201,11 @@ async function fetchPeriodMetrics(
   days: number,
   offsetDays: number,
 ): Promise<AccountMetrics[]> {
+  // offset=0: current period includes today
+  // For days=1,offset=0 → only today (date = CURRENT_DATE)
+  // For days=1,offset=1 → only yesterday
+  // For days=7,offset=0 → last 7 days including today
+  // For days=7,offset=7 → 7 days before that
   const rows = await sql`
     SELECT
       a.id, a.name, a.platform, a.currency, a.tipo,
@@ -214,8 +219,8 @@ async function fetchPeriodMetrics(
     FROM ad_accounts a
     LEFT JOIN metrics_daily m
       ON m.ad_account_id = a.id
-      AND m.date >= CURRENT_DATE - ${offsetDays + days}::int
-      AND m.date < CURRENT_DATE - ${offsetDays}::int
+      AND m.date > CURRENT_DATE - ${offsetDays + days}::int
+      AND m.date <= CURRENT_DATE - ${offsetDays}::int
     WHERE a.active = true
     GROUP BY a.id, a.name, a.platform, a.currency, a.tipo
     ORDER BY spend DESC
@@ -225,11 +230,15 @@ async function fetchPeriodMetrics(
 
 router.get("/insights", async (req, res) => {
   try {
-    const days = parseInt(req.query.days as string) || 7;
+    const rawDays = parseInt(req.query.days as string) || 7;
+    // days=-1 means "yesterday only" → fetch 1 day with offset 1
+    const isYesterday = rawDays < 0;
+    const days = isYesterday ? 1 : rawDays;
+    const offset = isYesterday ? 1 : 0;
 
     const [current, previous] = await Promise.all([
-      fetchPeriodMetrics(days, 0),
-      fetchPeriodMetrics(days, days),
+      fetchPeriodMetrics(days, offset),
+      fetchPeriodMetrics(days, offset + days),
     ]);
 
     const prevMap = new Map(previous.map((p) => [p.id, p]));

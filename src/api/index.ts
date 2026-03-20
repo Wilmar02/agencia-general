@@ -27,9 +27,12 @@ app.get("/api/accounts", async (_req, res) => {
   res.json(accounts);
 });
 
-// GET /api/dashboard?days=7 — resumen general
+// GET /api/dashboard?days=7 — resumen general (days=-1 = yesterday)
 app.get("/api/dashboard", async (req, res) => {
-  const days = parseInt(req.query.days as string) || 7;
+  const rawDays = parseInt(req.query.days as string) || 7;
+  const isYesterday = rawDays < 0;
+  const days = isYesterday ? 1 : rawDays;
+  const offset = isYesterday ? 1 : 0;
   const rows = await sql`
     SELECT
       a.id, a.name, a.platform, a.currency, a.tipo,
@@ -41,7 +44,9 @@ app.get("/api/dashboard", async (req, res) => {
       CASE WHEN SUM(m.spend) > 0 AND SUM(m.conv_value) > 0 THEN SUM(m.conv_value) / SUM(m.spend) ELSE 0 END as roas,
       CASE WHEN SUM(m.impressions) > 0 THEN (SUM(m.clicks)::numeric / SUM(m.impressions) * 100) ELSE 0 END as ctr
     FROM ad_accounts a
-    LEFT JOIN metrics_daily m ON m.ad_account_id = a.id AND m.date >= CURRENT_DATE - ${days}::int
+    LEFT JOIN metrics_daily m ON m.ad_account_id = a.id
+      AND m.date > CURRENT_DATE - ${offset + days}::int
+      AND m.date <= CURRENT_DATE - ${offset}::int
     WHERE a.active = true
     GROUP BY a.id, a.name, a.platform, a.currency, a.tipo
     ORDER BY spend DESC
