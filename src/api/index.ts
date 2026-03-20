@@ -1,13 +1,17 @@
 import express from "express";
+import path from "path";
+import { fileURLToPath } from "url";
 import sql from "../db/index.js";
 import billingRouter from "./billing.js";
 import cron from "node-cron";
 import "dotenv/config";
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = parseInt(process.env.PORT || "3001");
 
 app.use(express.json());
+app.use(express.static(path.join(__dirname, "../../dist")));
 app.use("/api/billing", billingRouter);
 
 // GET /api/accounts — todas las cuentas
@@ -82,6 +86,11 @@ app.get("/api/alerts", async (_req, res) => {
     ORDER BY al.created_at DESC LIMIT 50
   `;
   res.json(rows);
+});
+
+// SPA fallback
+app.use((_req, res) => {
+  res.sendFile(path.join(__dirname, "../../dist/index.html"));
 });
 
 app.listen(PORT, () => {
