@@ -184,12 +184,14 @@ function KPI({ label, value, change, invertColor }: { label: string; value: stri
 
 function AccountRow({ acc, expanded, onToggle, alerts, days }: { acc: any; expanded: boolean; onToggle: () => void; alerts: any[]; days: number }) {
   const [metrics, setMetrics] = useState<any[]>([]);
+  const [campaigns, setCampaigns] = useState<any[]>([]);
 
   useEffect(() => {
-    if (expanded && metrics.length === 0) {
-      fetch(`/api/metrics/${acc.accountId}?days=${days}`).then(r => r.json()).then(setMetrics);
+    if (expanded) {
+      if (metrics.length === 0) fetch(`/api/metrics/${acc.accountId}?days=${days}`).then(r => r.json()).then(setMetrics);
+      fetch(`/api/campaigns/${acc.accountId}?days=${days}`).then(r => r.json()).then(setCampaigns);
     }
-  }, [expanded]);
+  }, [expanded, days]);
 
   const s = acc.currency === "USD" ? "US$" : "$";
   const fmtV = (v: number) => acc.currency === "USD" ? v.toFixed(2) : Math.round(v).toLocaleString("es-CO");
@@ -232,8 +234,9 @@ function AccountRow({ acc, expanded, onToggle, alerts, days }: { acc: any; expan
       </div>
 
       {expanded && (
-        <div style={{ padding: "16px 20px 16px 48px", borderBottom: "1px solid #1c1c28", background: "#12121a" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+        <div style={{ borderBottom: "1px solid #1c1c28", background: "#12121a" }}>
+          {/* Chart + Diagnostics */}
+          <div style={{ padding: "16px 20px 12px 48px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
             <div>
               <div style={{ fontSize: 11, color: "#71717a", marginBottom: 8, fontWeight: 600 }}>GASTO DIARIO</div>
               <div style={{ display: "flex", alignItems: "flex-end", gap: 2, height: 50 }}>
@@ -265,6 +268,49 @@ function AccountRow({ acc, expanded, onToggle, alerts, days }: { acc: any; expan
               )}
             </div>
           </div>
+
+          {/* Campaigns table */}
+          {campaigns.length > 0 && (
+            <div style={{ padding: "0 20px 16px 48px" }}>
+              <div style={{ fontSize: 11, color: "#71717a", marginBottom: 8, fontWeight: 600 }}>CAMPAÑAS ({campaigns.length})</div>
+              <div style={{ border: "1px solid #1c1c28", borderRadius: 8, overflow: "hidden" }}>
+                {/* Campaign header */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 70px 55px 70px 50px", gap: 0, padding: "6px 12px", background: "#16161e", fontSize: 9, color: "#52525b", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
+                  <span>Campaña</span>
+                  <span style={{ textAlign: "right" }}>Gasto</span>
+                  <span style={{ textAlign: "right" }}>Conv.</span>
+                  <span style={{ textAlign: "right" }}>Costo</span>
+                  <span style={{ textAlign: "right" }}>CTR</span>
+                </div>
+                {campaigns.map((camp, i) => {
+                  const cSpend = Number(camp.spend);
+                  const cConv = Number(camp.conversions);
+                  const cCost = Number(camp.cost_per_conv);
+                  const cCtr = Number(camp.ctr);
+                  // Color code cost per conv
+                  const threshold = acc.tipo === "whatsapp" ? 12000 : acc.tipo === "ventas" ? 50000 : 25000;
+                  const thresholdUSD = acc.tipo === "whatsapp" ? 5 : 8;
+                  const limit = acc.currency === "USD" ? thresholdUSD : threshold;
+                  const costColor = cConv === 0 ? "#52525b" : cCost > limit ? "#f87171" : cCost > limit * 0.7 ? "#fbbf24" : "#4ade80";
+
+                  return (
+                    <div key={i} style={{
+                      display: "grid", gridTemplateColumns: "1fr 70px 55px 70px 50px",
+                      gap: 0, padding: "8px 12px", borderTop: "1px solid #1c1c28", fontSize: 12, alignItems: "center",
+                    }}>
+                      <span style={{ color: "#c0c0d0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingRight: 8 }} title={camp.campaign_name}>
+                        {camp.campaign_name}
+                      </span>
+                      <span style={{ textAlign: "right", fontWeight: 500, color: "#e4e4e7" }}>{s}{fmtV(cSpend)}</span>
+                      <span style={{ textAlign: "right", fontWeight: 600, color: cConv > 0 ? "#fff" : "#52525b" }}>{cConv || "—"}</span>
+                      <span style={{ textAlign: "right", color: costColor, fontWeight: 500 }}>{cConv > 0 ? `${s}${fmtV(cCost)}` : "—"}</span>
+                      <span style={{ textAlign: "right", color: "#71717a" }}>{cCtr > 0 ? `${cCtr.toFixed(1)}%` : "—"}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </>

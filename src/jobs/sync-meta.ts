@@ -84,6 +84,43 @@ async function syncMeta() {
     }
   }
 
+  // ── CAMPAIGNS ──
+  console.log(`\nSincronizando campañas...`);
+  const CAMP_FIELDS = "campaign_name,campaign_id,spend,impressions,clicks,reach,actions,action_values,cpm,cpc,ctr";
+
+  for (const acc of accounts) {
+    try {
+      const url = `https://graph.facebook.com/${API_VERSION}/${acc.account_id}/insights?fields=${CAMP_FIELDS}&date_preset=last_30d&time_increment=1&level=campaign&limit=500&access_token=${META_TOKEN}`;
+      const res = await fetch(url, { signal: AbortSignal.timeout(30000) });
+      const json = await res.json();
+
+      if (!json.data?.length) continue;
+
+      let count = 0;
+      for (const row of json.data) {
+        const spend = parseFloat(row.spend) || 0;
+        if (spend === 0) continue;
+        const imp = parseInt(row.impressions) || 0;
+        const clicks = parseInt(row.clicks) || 0;
+        const { conversions } = extractConversions(row.actions, acc.tipo);
+        const convValue = extractConvValue(row.action_values);
+        const costPerConv = conversions > 0 ? spend / conversions : 0;
+        const roas = spend > 0 && convValue > 0 ? convValue / spend : 0;
+
+        await sql`
+          INSERT INTO campaigns_daily (ad_account_id, campaign_id, campaign_name, date, spend, impressions, clicks, conversions, cost_per_conv, roas, status, raw_data)
+          VALUES (${acc.id}, ${row.campaign_id}, ${row.campaign_name}, ${row.date_start}, ${spend}, ${imp}, ${clicks}, ${conversions}, ${costPerConv}, ${roas}, 'ACTIVE', ${JSON.stringify(row)})
+          ON CONFLICT (ad_account_id, campaign_id, date)
+          DO UPDATE SET spend=${spend}, impressions=${imp}, clicks=${clicks}, conversions=${conversions}, cost_per_conv=${costPerConv}, roas=${roas}, campaign_name=${row.campaign_name}, raw_data=${JSON.stringify(row)}, synced_at=now()
+        `;
+        count++;
+      }
+      if (count > 0) console.log(`  ✓ ${acc.name}: ${count} filas de campañas`);
+    } catch (err: any) {
+      console.error(`  ✗ ${acc.name} campañas: ${err.message}`);
+    }
+  }
+
   console.log("Sync Meta completado");
   await sql.end();
 }

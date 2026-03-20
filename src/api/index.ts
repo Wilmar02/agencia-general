@@ -73,14 +73,18 @@ app.get("/api/campaigns/:accountId", async (req, res) => {
   const days = parseInt(req.query.days as string) || 7;
   const rows = await sql`
     SELECT campaign_name, campaign_id,
-      SUM(spend) as spend, SUM(impressions) as impressions,
-      SUM(clicks) as clicks, SUM(conversions) as conversions,
-      CASE WHEN SUM(conversions) > 0 THEN SUM(spend)/SUM(conversions) ELSE 0 END as cost_per_conv
+      SUM(spend)::numeric as spend, SUM(impressions)::int as impressions,
+      SUM(clicks)::int as clicks, SUM(conversions)::int as conversions,
+      CASE WHEN SUM(conversions) > 0 THEN SUM(spend)/SUM(conversions) ELSE 0 END as cost_per_conv,
+      CASE WHEN SUM(impressions) > 0 THEN (SUM(clicks)::numeric/SUM(impressions)*100) ELSE 0 END as ctr,
+      CASE WHEN SUM(spend) > 0 AND SUM(roas) > 0 THEN AVG(roas) ELSE 0 END as roas,
+      SUM(reach)::int as reach,
+      MAX(status) as status
     FROM campaigns_daily
     WHERE ad_account_id = ${req.params.accountId}
     AND date >= CURRENT_DATE - ${days}::int
     GROUP BY campaign_name, campaign_id
-    ORDER BY spend DESC
+    ORDER BY SUM(spend) DESC
   `;
   res.json(rows);
 });
