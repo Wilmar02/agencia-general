@@ -79,11 +79,16 @@ app.get("/api/campaigns/:accountId", async (req, res) => {
   const rows = await sql`
     SELECT campaign_name, campaign_id,
       SUM(spend)::numeric as spend, SUM(impressions)::int as impressions,
-      SUM(clicks)::int as clicks, SUM(conversions)::int as conversions,
-      CASE WHEN SUM(conversions) > 0 THEN SUM(spend)/SUM(conversions) ELSE 0 END as cost_per_conv,
+      SUM(clicks)::int as clicks, COALESCE(SUM(reach), 0)::int as reach,
       CASE WHEN SUM(impressions) > 0 THEN (SUM(clicks)::numeric/SUM(impressions)*100) ELSE 0 END as ctr,
-      CASE WHEN SUM(spend) > 0 AND SUM(roas) > 0 THEN AVG(roas) ELSE 0 END as roas,
-      SUM(reach)::int as reach,
+      CASE WHEN SUM(impressions) > 0 THEN (SUM(spend)/SUM(impressions)*1000) ELSE 0 END as cpm,
+      CASE WHEN SUM(clicks) > 0 THEN (SUM(spend)/SUM(clicks)) ELSE 0 END as cpc,
+      CASE WHEN COALESCE(SUM(reach), 0) > 0 THEN (SUM(impressions)::numeric/SUM(reach)) ELSE 0 END as frequency,
+      SUM(conversions)::int as conversions,
+      CASE WHEN SUM(conversions) > 0 THEN SUM(spend)/SUM(conversions) ELSE 0 END as cost_per_conv,
+      COALESCE(SUM(conv_value), 0)::numeric as conv_value,
+      CASE WHEN SUM(spend) > 0 AND COALESCE(SUM(conv_value), 0) > 0 THEN SUM(conv_value)/SUM(spend) ELSE 0 END as roas,
+      MAX(objective) as objective,
       MAX(status) as status
     FROM campaigns_daily
     WHERE ad_account_id = ${req.params.accountId}

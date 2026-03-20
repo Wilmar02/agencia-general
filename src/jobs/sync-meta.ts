@@ -12,7 +12,16 @@ function toDate(d: Date) {
 
 function extractConversions(actions: any[] | undefined, tipo: string) {
   if (!actions) return 0;
-  const chatTypes = ["onsite_conversion.messaging_conversation_started_7d", "onsite_conversion.total_messaging_connection", "onsite_conversion.messaging_first_reply"];
+  // Messaging: include both onsite_conversion.* prefixed and non-prefixed variants
+  const chatTypes = [
+    "onsite_conversion.messaging_conversation_started_7d",
+    "onsite_conversion.total_messaging_connection",
+    "onsite_conversion.messaging_first_reply",
+    "messaging_conversation_started_7d",
+    "total_messaging_connection",
+    "messaging_first_reply",
+    "onsite_conversion.messaging_welcome_message_view",
+  ];
   const purchaseTypes = ["purchase", "omni_purchase", "offsite_conversion.fb_pixel_purchase"];
   const leadTypes = ["lead", "onsite_conversion.lead_grouped", ...chatTypes];
   const types = tipo === "whatsapp" ? chatTypes : tipo === "ventas" ? purchaseTypes : leadTypes;
@@ -104,16 +113,22 @@ async function syncMeta(daysBack = 30) {
         if (spend === 0) continue;
         const imp = parseInt(row.impressions) || 0;
         const clicks = parseInt(row.clicks) || 0;
+        const reach = parseInt(row.reach) || 0;
+        const ctr = parseFloat(row.ctr) || 0;
+        const cpm = parseFloat(row.cpm) || 0;
+        const cpc = parseFloat(row.cpc) || 0;
+        const frequency = parseFloat(row.frequency) || 0;
         const conversions = extractConversions(row.actions, acc.tipo);
         const convValue = extractConvValue(row.action_values);
         const costPerConv = conversions > 0 ? spend / conversions : 0;
         const roas = spend > 0 && convValue > 0 ? convValue / spend : 0;
+        const objective = row.objective || null;
 
         await sql`
-          INSERT INTO campaigns_daily (ad_account_id, campaign_id, campaign_name, date, spend, impressions, clicks, conversions, cost_per_conv, roas, status, raw_data)
-          VALUES (${acc.id}, ${row.campaign_id}, ${row.campaign_name}, ${row.date_start}, ${spend}, ${imp}, ${clicks}, ${conversions}, ${costPerConv}, ${roas}, 'ACTIVE', ${JSON.stringify(row)})
+          INSERT INTO campaigns_daily (ad_account_id, campaign_id, campaign_name, date, spend, impressions, clicks, reach, ctr, cpm, cpc, frequency, conversions, cost_per_conv, conv_value, roas, objective, status, raw_data)
+          VALUES (${acc.id}, ${row.campaign_id}, ${row.campaign_name}, ${row.date_start}, ${spend}, ${imp}, ${clicks}, ${reach}, ${ctr}, ${cpm}, ${cpc}, ${frequency}, ${conversions}, ${costPerConv}, ${convValue}, ${roas}, ${objective}, 'ACTIVE', ${JSON.stringify(row)})
           ON CONFLICT (ad_account_id, campaign_id, date)
-          DO UPDATE SET spend=${spend}, impressions=${imp}, clicks=${clicks}, conversions=${conversions}, cost_per_conv=${costPerConv}, roas=${roas}, campaign_name=${row.campaign_name}, raw_data=${JSON.stringify(row)}, synced_at=now()
+          DO UPDATE SET spend=${spend}, impressions=${imp}, clicks=${clicks}, reach=${reach}, ctr=${ctr}, cpm=${cpm}, cpc=${cpc}, frequency=${frequency}, conversions=${conversions}, cost_per_conv=${costPerConv}, conv_value=${convValue}, roas=${roas}, objective=${objective}, campaign_name=${row.campaign_name}, raw_data=${JSON.stringify(row)}, synced_at=now()
         `;
         count++;
       }

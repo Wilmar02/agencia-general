@@ -10,6 +10,7 @@ const META_ACCOUNTS = [
   { account_id: "act_924872489712301", name: "Porto Sabbia Residences", currency: "COP", tipo: "leads" },
   { account_id: "act_1147397640776403", name: "Rodadero Living", currency: "COP", tipo: "leads" },
   { account_id: "act_2364841483675298", name: "Banana Playa", currency: "COP", tipo: "ventas" },
+  { account_id: "act_1289570046528204", name: "Apotheosic", currency: "USD", tipo: "ventas" },
 ];
 
 const GOOGLE_ACCOUNTS = [

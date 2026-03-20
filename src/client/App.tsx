@@ -74,6 +74,8 @@ export default function App() {
   const totalLeads = scores.filter(s => s.tipo === "leads").reduce((a, s) => a + s.conversions, 0);
   const totalChats = scores.filter(s => s.tipo === "whatsapp").reduce((a, s) => a + s.conversions, 0);
   const totalVentas = scores.filter(s => s.tipo === "ventas").reduce((a, s) => a + s.conversions, 0);
+  const totalConversions = totalLeads + totalChats + totalVentas;
+  const avgCPL = totalConversions > 0 ? totalSpendCOP / totalConversions : 0;
 
   return (
     <div style={{ background: "#0f1117", minHeight: "100vh", color: "#e4e4e7", fontFamily: "'Inter', -apple-system, sans-serif" }}>
@@ -140,12 +142,13 @@ export default function App() {
           )}
 
           {/* KPIs */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 24 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 12, marginBottom: 24 }}>
             <KPI label="Gasto COP" value={fmtK(totalSpendCOP)} change={wow.spendChange} invertColor />
             <KPI label="Gasto USD" value={fmt(totalSpendUSD, "USD")} />
             <KPI label="Leads" value={String(totalLeads)} change={wow.leadsChange} />
             <KPI label="Chats WA" value={String(totalChats)} />
             <KPI label="Ventas" value={String(totalVentas)} />
+            <KPI label="CPL Prom." value={fmtK(avgCPL)} change={wow.cplChange} invertColor />
           </div>
 
           {/* TABLA PRINCIPAL */}
@@ -302,27 +305,34 @@ function AccountRow({ acc, expanded, onToggle, alerts, days }: { acc: any; expan
               <div style={{ fontSize: 11, color: "#71717a", marginBottom: 8, fontWeight: 600 }}>CAMPAÑAS ({campaigns.length})</div>
               <div style={{ border: "1px solid #1c1c28", borderRadius: 8, overflow: "hidden" }}>
                 {/* Campaign header */}
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 70px 55px 70px 50px", gap: 0, padding: "6px 12px", background: "#16161e", fontSize: 9, color: "#52525b", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 70px 55px 70px 50px 60px 55px 55px", gap: 0, padding: "6px 12px", background: "#16161e", fontSize: 9, color: "#52525b", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
                   <span>Campaña</span>
                   <span style={{ textAlign: "right" }}>Gasto</span>
                   <span style={{ textAlign: "right" }}>Conv.</span>
                   <span style={{ textAlign: "right" }}>Costo</span>
                   <span style={{ textAlign: "right" }}>CTR</span>
+                  <span style={{ textAlign: "right" }}>Alcance</span>
+                  <span style={{ textAlign: "right" }}>CPM</span>
+                  <span style={{ textAlign: "right" }}>Freq.</span>
                 </div>
                 {campaigns.map((camp, i) => {
                   const cSpend = Number(camp.spend);
                   const cConv = Number(camp.conversions);
                   const cCost = Number(camp.cost_per_conv);
                   const cCtr = Number(camp.ctr);
+                  const cReach = Number(camp.reach) || 0;
+                  const cCpm = Number(camp.cpm) || 0;
+                  const cFreq = Number(camp.frequency) || 0;
                   // Color code cost per conv
                   const threshold = acc.tipo === "whatsapp" ? 12000 : acc.tipo === "ventas" ? 50000 : 25000;
                   const thresholdUSD = acc.tipo === "whatsapp" ? 5 : 8;
                   const limit = acc.currency === "USD" ? thresholdUSD : threshold;
                   const costColor = cConv === 0 ? "#52525b" : cCost > limit ? "#f87171" : cCost > limit * 0.7 ? "#fbbf24" : "#4ade80";
+                  const freqColor = cFreq > 3 ? "#f87171" : cFreq > 2 ? "#fbbf24" : "#71717a";
 
                   return (
                     <div key={i} style={{
-                      display: "grid", gridTemplateColumns: "1fr 70px 55px 70px 50px",
+                      display: "grid", gridTemplateColumns: "1fr 70px 55px 70px 50px 60px 55px 55px",
                       gap: 0, padding: "8px 12px", borderTop: "1px solid #1c1c28", fontSize: 12, alignItems: "center",
                     }}>
                       <span style={{ color: "#c0c0d0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingRight: 8 }} title={camp.campaign_name}>
@@ -332,6 +342,9 @@ function AccountRow({ acc, expanded, onToggle, alerts, days }: { acc: any; expan
                       <span style={{ textAlign: "right", fontWeight: 600, color: cConv > 0 ? "#fff" : "#52525b" }}>{cConv || "—"}</span>
                       <span style={{ textAlign: "right", color: costColor, fontWeight: 500 }}>{cConv > 0 ? `${s}${fmtV(cCost)}` : "—"}</span>
                       <span style={{ textAlign: "right", color: "#71717a" }}>{cCtr > 0 ? `${cCtr.toFixed(1)}%` : "—"}</span>
+                      <span style={{ textAlign: "right", color: "#71717a", fontSize: 11 }}>{cReach > 0 ? (cReach >= 1000 ? `${(cReach / 1000).toFixed(1)}K` : cReach) : "—"}</span>
+                      <span style={{ textAlign: "right", color: "#71717a", fontSize: 11 }}>{cCpm > 0 ? `${s}${fmtV(cCpm)}` : "—"}</span>
+                      <span style={{ textAlign: "right", color: freqColor, fontSize: 11 }}>{cFreq > 0 ? cFreq.toFixed(1) : "—"}</span>
                     </div>
                   );
                 })}
