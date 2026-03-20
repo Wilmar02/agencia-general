@@ -3,6 +3,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import sql from "../db/index.js";
 import billingRouter from "./billing.js";
+import insightsRouter from "./insights.js";
 import cron from "node-cron";
 import "dotenv/config";
 
@@ -18,6 +19,7 @@ app.use(express.static(path.join(__dirname, "../../dist"), {
   }
 }));
 app.use("/api/billing", billingRouter);
+app.use("/api", insightsRouter);
 
 // GET /api/accounts — todas las cuentas
 app.get("/api/accounts", async (_req, res) => {
