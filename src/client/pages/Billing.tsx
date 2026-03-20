@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { FileText, Send, CheckCircle, Clock, Plus, Calendar, DollarSign, AlertTriangle } from "lucide-react";
+import { FileText, Send, CheckCircle, Clock, Plus, Calendar, AlertTriangle, X } from "lucide-react";
 
 interface Invoice {
   id: number;
@@ -42,18 +42,35 @@ interface BillingClient {
   services: { id: number; description: string; amount: number; billing_day: number; category: string }[];
 }
 
+const C = {
+  bg: "#0a0a0f",
+  card: "#12121a",
+  cardHover: "#1a1a2e",
+  border: "#1e1e2e",
+  text: "#e2e2e2",
+  textSec: "#8888a0",
+  blue: "#3b82f6",
+  green: "#22c55e",
+  red: "#ef4444",
+  orange: "#f97316",
+  purple: "#a855f7",
+  yellow: "#eab308",
+} as const;
+
 const fmt = (v: number) => `$${Math.round(v).toLocaleString("es-CO")}`;
-const statusConfig: Record<string, { label: string; color: string; bg: string; icon: any }> = {
-  draft: { label: "Borrador", color: "text-gray-400", bg: "bg-gray-400/10", icon: FileText },
-  sent: { label: "Enviada", color: "text-blue-400", bg: "bg-blue-400/10", icon: Send },
-  paid: { label: "Pagada", color: "text-green-400", bg: "bg-green-400/10", icon: CheckCircle },
-  overdue: { label: "Vencida", color: "text-red-400", bg: "bg-red-400/10", icon: AlertTriangle },
+
+const statusConfig: Record<string, { label: string; color: string; bg: string; Icon: any }> = {
+  draft: { label: "Borrador", color: C.textSec, bg: "#8888a018", Icon: FileText },
+  sent: { label: "Enviada", color: C.blue, bg: "#3b82f618", Icon: Send },
+  paid: { label: "Pagada", color: C.green, bg: "#22c55e18", Icon: CheckCircle },
+  overdue: { label: "Vencida", color: C.red, bg: "#ef444418", Icon: AlertTriangle },
 };
+
 const catColors: Record<string, string> = {
-  meta: "bg-blue-500",
-  google: "bg-yellow-500",
-  crm: "bg-purple-500",
-  asesoria: "bg-teal-500",
+  meta: C.blue,
+  google: C.yellow,
+  crm: C.purple,
+  asesoria: "#14b8a6",
 };
 
 export default function Billing() {
@@ -62,7 +79,6 @@ export default function Billing() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [clients, setClients] = useState<BillingClient[]>([]);
   const [showCreate, setShowCreate] = useState(false);
-  const [selectedClient, setSelectedClient] = useState<number | null>(null);
 
   const now = new Date();
   const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
@@ -84,7 +100,6 @@ export default function Billing() {
     const inv = await res.json();
     setInvoices(prev => [{ ...inv, client_name: clients.find(c => c.id === clientId)?.name || "" }, ...prev]);
     setShowCreate(false);
-    // Refresh
     fetch("/api/billing/summary").then(r => r.json()).then(setSummary);
     fetch(`/api/billing/calendar?month=${month}`).then(r => r.json()).then(setCalendar);
   }
@@ -107,129 +122,268 @@ export default function Billing() {
     calendarByDay.get(day)!.push(item);
   }
 
+  const monthName = new Intl.DateTimeFormat("es-CO", { month: "long", year: "numeric" }).format(now);
+
   return (
-    <div className="space-y-6">
+    <div>
       {/* Summary Cards */}
       {summary && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <SummaryCard label="Esperado mensual" value={fmt(Number(summary.expected_monthly))} color="text-white" icon={<Calendar size={18} />} />
-          <SummaryCard label="Cobrado" value={fmt(Number(summary.total_paid))} color="text-green-400" icon={<CheckCircle size={18} />} />
-          <SummaryCard label="Pendiente" value={fmt(Number(summary.total_pending))} color="text-yellow-400" icon={<Clock size={18} />} />
-          <SummaryCard label="Vencidas" value={String(summary.overdue)} color="text-red-400" icon={<AlertTriangle size={18} />} />
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 28 }}>
+          <SummaryCard label="Esperado mensual" value={fmt(Number(summary.expected_monthly))} accent={C.text} icon={<Calendar size={18} />} />
+          <SummaryCard label="Cobrado" value={fmt(Number(summary.total_paid))} accent={C.green} icon={<CheckCircle size={18} />} />
+          <SummaryCard label="Pendiente" value={fmt(Number(summary.total_pending))} accent={C.yellow} icon={<Clock size={18} />} />
+          <SummaryCard label="Vencidas" value={String(summary.overdue)} accent={C.red} icon={<AlertTriangle size={18} />} />
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Calendar */}
-        <div className="lg:col-span-1 bg-gray-900 rounded-lg border border-gray-800 p-4">
-          <h3 className="font-semibold mb-4 flex items-center gap-2">
-            <Calendar size={16} /> Calendario de cobros
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 24 }}>
+        {/* Calendar Column */}
+        <div style={{
+          background: C.card,
+          borderRadius: 10,
+          border: `1px solid ${C.border}`,
+          padding: 20,
+          alignSelf: "start",
+        }}>
+          <h3 style={{ fontWeight: 600, marginBottom: 16, display: "flex", alignItems: "center", gap: 8, fontSize: 14 }}>
+            <Calendar size={16} style={{ color: C.textSec }} /> Calendario de cobros
           </h3>
-          <div className="space-y-2">
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {Array.from(calendarByDay.entries())
               .sort(([a], [b]) => a - b)
-              .map(([day, items]) => (
-                <div key={day} className={`rounded-lg p-3 border ${day < today ? "border-gray-800 opacity-60" : day === today ? "border-yellow-500 bg-yellow-500/5" : "border-gray-800"}`}>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className={`text-sm font-bold ${day === today ? "text-yellow-400" : "text-gray-300"}`}>
-                      Día {day} {day === today && "← HOY"}
-                    </span>
-                  </div>
-                  {items.map((item, i) => (
-                    <div key={i} className="flex items-center justify-between text-xs mt-1">
-                      <div className="flex items-center gap-2">
-                        <span className={`w-1.5 h-1.5 rounded-full ${catColors[item.category] || "bg-gray-500"}`} />
-                        <span className="text-gray-400">{item.client_name}</span>
-                        {item.invoiced && (
-                          <span className={`px-1 rounded text-[10px] ${statusConfig[item.invoiceStatus || "draft"]?.bg} ${statusConfig[item.invoiceStatus || "draft"]?.color}`}>
-                            {statusConfig[item.invoiceStatus || "draft"]?.label}
-                          </span>
-                        )}
-                      </div>
-                      <span className="text-white font-medium">{fmt(item.amount)}</span>
+              .map(([day, items]) => {
+                const isPast = day < today;
+                const isToday = day === today;
+                return (
+                  <div key={day} style={{
+                    borderRadius: 8,
+                    padding: "10px 12px",
+                    border: `1px solid ${isToday ? C.yellow + "60" : C.border}`,
+                    background: isToday ? C.yellow + "08" : "transparent",
+                    opacity: isPast ? 0.5 : 1,
+                    transition: "opacity 0.15s ease",
+                  }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: isToday ? C.yellow : "#c0c0d0" }}>
+                        Dia {day} {isToday && <span style={{ fontSize: 10, fontWeight: 500, opacity: 0.8 }}>HOY</span>}
+                      </span>
                     </div>
-                  ))}
-                </div>
-              ))}
+                    {items.map((item, i) => {
+                      const sc = statusConfig[item.invoiceStatus || "draft"] || statusConfig.draft;
+                      return (
+                        <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 11, marginTop: 4 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <span style={{
+                              width: 6,
+                              height: 6,
+                              borderRadius: "50%",
+                              background: catColors[item.category] || C.textSec,
+                              display: "inline-block",
+                              flexShrink: 0,
+                            }} />
+                            <span style={{ color: C.textSec }}>{item.client_name}</span>
+                            {item.invoiced && (
+                              <span style={{
+                                fontSize: 9,
+                                padding: "1px 5px",
+                                borderRadius: 3,
+                                background: sc.bg,
+                                color: sc.color,
+                                fontWeight: 600,
+                              }}>
+                                {sc.label}
+                              </span>
+                            )}
+                          </div>
+                          <span style={{ fontWeight: 600, color: C.text, fontSize: 11 }}>{fmt(item.amount)}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
           </div>
         </div>
 
-        {/* Invoices List */}
-        <div className="lg:col-span-2 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="font-semibold">Cuentas de cobro — {new Intl.DateTimeFormat("es-CO", { month: "long", year: "numeric" }).format(now)}</h3>
-            <button onClick={() => setShowCreate(!showCreate)} className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded text-sm">
-              <Plus size={14} /> Nueva
+        {/* Invoices Column */}
+        <div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+            <h3 style={{ fontWeight: 600, fontSize: 15 }}>
+              Cuentas de cobro <span style={{ color: C.textSec, fontWeight: 400, textTransform: "capitalize" }}>— {monthName}</span>
+            </h3>
+            <button
+              onClick={() => setShowCreate(!showCreate)}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "7px 14px",
+                background: C.blue,
+                color: "#ffffff",
+                borderRadius: 6,
+                fontSize: 13,
+                fontWeight: 500,
+              }}
+            >
+              {showCreate ? <X size={14} /> : <Plus size={14} />}
+              {showCreate ? "Cerrar" : "Nueva"}
             </button>
           </div>
 
-          {/* Quick Create */}
+          {/* Quick Create Panel */}
           {showCreate && (
-            <div className="bg-gray-900 rounded-lg border border-blue-500/50 p-4 space-y-3">
-              <p className="text-sm text-gray-400">Selecciona cliente para generar cuenta de cobro:</p>
-              {clients.map(client => (
-                <div key={client.id} className="flex items-center justify-between bg-gray-800 rounded p-3">
-                  <div>
-                    <p className="text-sm font-medium">{client.name}</p>
-                    <div className="flex gap-2 mt-1">
-                      {client.services.map(s => (
-                        <span key={s.id} className="text-[10px] text-gray-400 flex items-center gap-1">
-                          <span className={`w-1.5 h-1.5 rounded-full ${catColors[s.category]}`} />
-                          {s.description} — {fmt(s.amount)}
-                        </span>
-                      ))}
+            <div style={{
+              background: C.card,
+              borderRadius: 10,
+              border: `1px solid ${C.blue}40`,
+              padding: 18,
+              marginBottom: 16,
+            }}>
+              <p style={{ fontSize: 13, color: C.textSec, marginBottom: 14 }}>Selecciona cliente para generar cuenta de cobro:</p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {clients.map(client => (
+                  <div key={client.id} style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    background: C.border,
+                    borderRadius: 8,
+                    padding: "12px 14px",
+                  }}>
+                    <div>
+                      <p style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{client.name}</p>
+                      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                        {client.services.map(svc => (
+                          <span key={svc.id} style={{ fontSize: 10, color: C.textSec, display: "flex", alignItems: "center", gap: 4 }}>
+                            <span style={{
+                              width: 6,
+                              height: 6,
+                              borderRadius: "50%",
+                              background: catColors[svc.category] || C.textSec,
+                              display: "inline-block",
+                            }} />
+                            {svc.description} — {fmt(svc.amount)}
+                          </span>
+                        ))}
+                      </div>
                     </div>
+                    <button
+                      onClick={() => createInvoice(client.id, client.services.map(s => ({ description: s.description, amount: s.amount })))}
+                      style={{
+                        padding: "6px 14px",
+                        background: C.green,
+                        color: "#ffffff",
+                        borderRadius: 6,
+                        fontSize: 12,
+                        fontWeight: 600,
+                        flexShrink: 0,
+                      }}
+                    >
+                      Generar
+                    </button>
                   </div>
-                  <button
-                    onClick={() => createInvoice(client.id, client.services.map(s => ({ description: s.description, amount: s.amount })))}
-                    className="px-3 py-1 bg-green-600 hover:bg-green-500 rounded text-xs"
-                  >
-                    Generar
-                  </button>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           )}
 
           {/* Invoice Cards */}
           {invoices.length === 0 ? (
-            <div className="bg-gray-900 rounded-lg border border-gray-800 p-8 text-center text-gray-500">
+            <div style={{
+              background: C.card,
+              borderRadius: 10,
+              border: `1px solid ${C.border}`,
+              padding: "48px 24px",
+              textAlign: "center",
+              color: C.textSec,
+              fontSize: 14,
+            }}>
               No hay cuentas de cobro este mes
             </div>
           ) : (
-            invoices.map(inv => {
-              const sc = statusConfig[inv.status] || statusConfig.draft;
-              const Icon = sc.icon;
-              return (
-                <div key={inv.id} className="bg-gray-900 rounded-lg border border-gray-800 p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-3">
-                      <span className={`p-1.5 rounded ${sc.bg} ${sc.color}`}><Icon size={16} /></span>
-                      <div>
-                        <p className="font-medium text-sm">Cuenta No. {inv.number}</p>
-                        <p className="text-xs text-gray-400">{inv.client_name}</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {invoices.map(inv => {
+                const sc = statusConfig[inv.status] || statusConfig.draft;
+                const Icon = sc.Icon;
+                return (
+                  <div key={inv.id} style={{
+                    background: C.card,
+                    borderRadius: 10,
+                    border: `1px solid ${C.border}`,
+                    padding: "14px 18px",
+                    transition: "border-color 0.15s ease",
+                  }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                        <span style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          width: 32,
+                          height: 32,
+                          borderRadius: 8,
+                          background: sc.bg,
+                          color: sc.color,
+                        }}>
+                          <Icon size={16} />
+                        </span>
+                        <div>
+                          <p style={{ fontWeight: 600, fontSize: 14 }}>Cuenta No. {inv.number}</p>
+                          <p style={{ fontSize: 12, color: C.textSec }}>{inv.client_name}</p>
+                        </div>
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        <p style={{ fontWeight: 700, fontSize: 16 }}>{fmt(Number(inv.total))}</p>
+                        <p style={{ fontSize: 11, color: C.textSec }}>{new Date(inv.issue_date).toLocaleDateString("es-CO")}</p>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <p className="font-bold">{fmt(Number(inv.total))}</p>
-                      <p className="text-xs text-gray-400">{new Date(inv.issue_date).toLocaleDateString("es-CO")}</p>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11 }}>
+                      {inv.items.map((item: any, i: number) => (
+                        <span key={i} style={{
+                          background: C.border,
+                          padding: "3px 8px",
+                          borderRadius: 4,
+                          color: "#c0c0d0",
+                        }}>
+                          {item.description}
+                        </span>
+                      ))}
+                      <div style={{ flex: 1 }} />
+                      {inv.status === "draft" && (
+                        <button
+                          onClick={() => updateStatus(inv.id, "sent")}
+                          style={{
+                            padding: "4px 12px",
+                            background: C.blue,
+                            color: "#ffffff",
+                            borderRadius: 5,
+                            fontSize: 11,
+                            fontWeight: 600,
+                          }}
+                        >
+                          Marcar enviada
+                        </button>
+                      )}
+                      {inv.status === "sent" && (
+                        <button
+                          onClick={() => updateStatus(inv.id, "paid")}
+                          style={{
+                            padding: "4px 12px",
+                            background: C.green,
+                            color: "#ffffff",
+                            borderRadius: 5,
+                            fontSize: 11,
+                            fontWeight: 600,
+                          }}
+                        >
+                          Marcar pagada
+                        </button>
+                      )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 text-xs">
-                    {inv.items.map((item: any, i: number) => (
-                      <span key={i} className="bg-gray-800 px-2 py-0.5 rounded text-gray-300">{item.description}</span>
-                    ))}
-                    <div className="flex-1" />
-                    {inv.status === "draft" && (
-                      <button onClick={() => updateStatus(inv.id, "sent")} className="px-2 py-0.5 bg-blue-600 hover:bg-blue-500 rounded">Marcar enviada</button>
-                    )}
-                    {inv.status === "sent" && (
-                      <button onClick={() => updateStatus(inv.id, "paid")} className="px-2 py-0.5 bg-green-600 hover:bg-green-500 rounded">Marcar pagada</button>
-                    )}
-                  </div>
-                </div>
-              );
-            })
+                );
+              })}
+            </div>
           )}
         </div>
       </div>
@@ -237,14 +391,19 @@ export default function Billing() {
   );
 }
 
-function SummaryCard({ label, value, color, icon }: { label: string; value: string; color: string; icon: React.ReactNode }) {
+function SummaryCard({ label, value, accent, icon }: { label: string; value: string; accent: string; icon: React.ReactNode }) {
   return (
-    <div className="bg-gray-900 rounded-lg border border-gray-800 p-4">
-      <div className="flex items-center gap-2 mb-2">
-        <span className={`${color} opacity-70`}>{icon}</span>
-        <span className="text-xs text-gray-400 uppercase tracking-wide">{label}</span>
+    <div style={{
+      background: C.card,
+      borderRadius: 10,
+      border: `1px solid ${C.border}`,
+      padding: "18px 20px",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+        <span style={{ color: accent, opacity: 0.7 }}>{icon}</span>
+        <span style={{ fontSize: 11, color: C.textSec, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 500 }}>{label}</span>
       </div>
-      <p className={`text-xl font-bold ${color}`}>{value}</p>
+      <p style={{ fontSize: 22, fontWeight: 700, color: accent, letterSpacing: "-0.02em" }}>{value}</p>
     </div>
   );
 }
