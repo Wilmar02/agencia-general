@@ -1,368 +1,277 @@
 import { useState, useEffect } from "react";
-import { DollarSign, Users, MessageCircle, ShoppingCart, BarChart3, FileText, TrendingUp, TrendingDown, Minus } from "lucide-react";
-import AccountCard from "./components/AccountCard.js";
-import AlertBanner from "./components/AlertBanner.js";
-import AccountsTable from "./components/AccountsTable.js";
 import Billing from "./pages/Billing.js";
 
-interface DashboardData {
-  totalSpendCOP: number;
-  totalSpendUSD: number;
-  totalLeads: number;
-  totalChats: number;
-  totalVentas: number;
-  accounts: any[];
-}
-
-interface InsightsData {
+interface Insight {
   alerts: any[];
   performanceScores: any[];
-  weekOverWeek: {
-    spendChange: string;
-    leadsChange: string;
-    cplChange: string;
-    direction: "better" | "worse" | "stable";
-    currentSpend: number;
-    previousSpend: number;
-    currentConversions: number;
-    previousConversions: number;
-  };
+  weekOverWeek: any;
   topPerformers: any[];
   needsAttention: any[];
 }
 
-function fmt(val: number, currency: string) {
-  if (currency === "USD") return `US$${val.toFixed(2)}`;
-  return `$${Math.round(val).toLocaleString("es-CO")}`;
-}
+const fmt = (v: number, cur = "COP") => {
+  if (cur === "USD") return `US$${v.toFixed(2)}`;
+  return `$${Math.round(v).toLocaleString("es-CO")}`;
+};
 
-function parsePctStr(s: string): number {
-  return parseInt(s.replace(/[^-\d]/g, "")) || 0;
-}
-
-const C = {
-  bg: "#0a0a0f",
-  card: "#12121a",
-  cardHover: "#1a1a2e",
-  border: "#1e1e2e",
-  text: "#e2e2e2",
-  textSec: "#8888a0",
-  blue: "#3b82f6",
-  green: "#22c55e",
-  red: "#ef4444",
-  orange: "#f97316",
-  purple: "#a855f7",
-  yellow: "#eab308",
-} as const;
+const fmtK = (v: number, cur = "COP") => {
+  if (cur === "USD") return `US$${v.toFixed(2)}`;
+  if (v >= 1000000) return `$${(v / 1000000).toFixed(1)}M`;
+  if (v >= 1000) return `$${Math.round(v / 1000)}K`;
+  return `$${Math.round(v).toLocaleString("es-CO")}`;
+};
 
 export default function App() {
-  const [page, setPage] = useState<"dashboard" | "billing">("dashboard");
-  const [data, setData] = useState<DashboardData | null>(null);
-  const [insights, setInsights] = useState<InsightsData | null>(null);
+  const [page, setPage] = useState<"ads" | "billing">("ads");
+  const [insights, setInsights] = useState<Insight | null>(null);
   const [days, setDays] = useState(7);
   const [loading, setLoading] = useState(true);
+  const [expandedRow, setExpandedRow] = useState<number | null>(null);
 
   useEffect(() => {
     setLoading(true);
-    Promise.all([
-      fetch(`/api/dashboard?days=${days}`).then(r => r.json()),
-      fetch(`/api/insights?days=${days}`).then(r => r.json()),
-    ])
-      .then(([dashData, insData]) => {
-        setData(dashData);
-        setInsights(insData);
-      })
-      .finally(() => setLoading(false));
+    fetch(`/api/insights?days=${days}`)
+      .then(r => r.json())
+      .then(d => { setInsights(d); setLoading(false); })
+      .catch(() => setLoading(false));
   }, [days]);
 
   if (loading) return (
-    <div style={{ minHeight: "100vh", background: C.bg, display: "flex", alignItems: "center", justifyContent: "center", color: C.text }}>
-      <div style={{ textAlign: "center" }}>
-        <div style={{ width: 32, height: 32, border: `3px solid ${C.border}`, borderTopColor: C.blue, borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 12px" }} />
-        <p style={{ color: C.textSec, fontSize: 14 }}>Cargando datos...</p>
-      </div>
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    <div style={S.center}>
+      <div style={S.spinner} />
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   );
 
-  if (!data) return (
-    <div style={{ minHeight: "100vh", background: C.bg, display: "flex", alignItems: "center", justifyContent: "center", color: C.red }}>
-      Error cargando datos
-    </div>
-  );
+  if (!insights) return <div style={S.center}>Error cargando datos</div>;
 
-  const metaAccounts = data.accounts.filter(a => a.platform === "meta");
-  const googleAccounts = data.accounts.filter(a => a.platform === "google");
+  const wow = insights.weekOverWeek;
+  const scores = insights.performanceScores;
+  const alerts = insights.alerts.filter(a => a.severity !== "info");
+  const metaScores = scores.filter(s => s.platform === "meta" && s.spend > 0);
+  const googleScores = scores.filter(s => s.platform === "google");
 
-  // Week over week data for KPI trends
-  const wow = insights?.weekOverWeek;
+  const totalSpendCOP = scores.filter(s => s.currency === "COP").reduce((a, s) => a + s.spend, 0);
+  const totalSpendUSD = scores.filter(s => s.currency === "USD").reduce((a, s) => a + s.spend, 0);
+  const totalLeads = scores.filter(s => s.tipo === "leads").reduce((a, s) => a + s.conversions, 0);
+  const totalChats = scores.filter(s => s.tipo === "whatsapp").reduce((a, s) => a + s.conversions, 0);
+  const totalVentas = scores.filter(s => s.tipo === "ventas").reduce((a, s) => a + s.conversions, 0);
 
   return (
-    <div style={{ minHeight: "100vh", background: C.bg, color: C.text }}>
-      {/* Header */}
-      <header style={{ borderBottom: `1px solid ${C.border}`, padding: "16px 24px" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", maxWidth: 1280, margin: "0 auto" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 24 }}>
-            <h1 style={{ fontSize: 20, fontWeight: 700, letterSpacing: "-0.02em" }}>Agencia General</h1>
-            <nav style={{ display: "flex", gap: 4 }}>
-              <NavButton active={page === "dashboard"} onClick={() => setPage("dashboard")}>
-                <BarChart3 size={14} /> Ads
-              </NavButton>
-              <NavButton active={page === "billing"} onClick={() => setPage("billing")}>
-                <FileText size={14} /> Facturacion
-              </NavButton>
-            </nav>
+    <div style={{ background: "#0f1117", minHeight: "100vh", color: "#e4e4e7", fontFamily: "'Inter', -apple-system, sans-serif" }}>
+      {/* NAV */}
+      <nav style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 28px", borderBottom: "1px solid #1c1c28" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
+          <span style={{ fontSize: 17, fontWeight: 700, color: "#fff" }}>Agencia General</span>
+          <div style={{ display: "flex", gap: 2, background: "#1a1a26", borderRadius: 8, padding: 3 }}>
+            {(["ads", "billing"] as const).map(p => (
+              <button key={p} onClick={() => setPage(p)} style={{
+                padding: "7px 16px", borderRadius: 6, fontSize: 13, fontWeight: 500, border: "none",
+                background: page === p ? "#2563eb" : "transparent",
+                color: page === p ? "#fff" : "#71717a",
+              }}>
+                {p === "ads" ? "Ads" : "Facturacion"}
+              </button>
+            ))}
           </div>
-          {page === "dashboard" && (
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              {/* Week over week direction badge */}
-              {wow && (
-                <span style={{
-                  fontSize: 11,
-                  fontWeight: 600,
-                  padding: "4px 10px",
-                  borderRadius: 6,
-                  background: wow.direction === "better" ? "#22c55e18" : wow.direction === "worse" ? "#ef444418" : "#8888a018",
-                  color: wow.direction === "better" ? C.green : wow.direction === "worse" ? C.red : C.textSec,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 4,
-                }}>
-                  {wow.direction === "better" ? <TrendingUp size={12} /> : wow.direction === "worse" ? <TrendingDown size={12} /> : <Minus size={12} />}
-                  {wow.direction === "better" ? "Mejorando" : wow.direction === "worse" ? "Empeorando" : "Estable"}
-                </span>
-              )}
-              <div style={{ display: "flex", gap: 6 }}>
-                {[7, 14, 30].map(d => (
-                  <button
-                    key={d}
-                    onClick={() => setDays(d)}
-                    style={{
-                      padding: "6px 14px",
-                      borderRadius: 6,
-                      fontSize: 13,
-                      fontWeight: 500,
-                      background: days === d ? C.blue : C.card,
-                      color: days === d ? "#ffffff" : C.textSec,
-                      border: days === d ? "none" : `1px solid ${C.border}`,
-                      transition: "all 0.15s ease",
-                      cursor: "pointer",
-                    }}
-                  >
-                    {d}d
-                  </button>
-                ))}
+        </div>
+        {page === "ads" && (
+          <div style={{ display: "flex", gap: 2, background: "#1a1a26", borderRadius: 8, padding: 3 }}>
+            {[7, 14, 30].map(d => (
+              <button key={d} onClick={() => setDays(d)} style={{
+                padding: "6px 14px", borderRadius: 6, fontSize: 12, fontWeight: 500, border: "none",
+                background: days === d ? "#27272a" : "transparent",
+                color: days === d ? "#fff" : "#71717a",
+              }}>{d}d</button>
+            ))}
+          </div>
+        )}
+      </nav>
+
+      {page === "billing" && <div style={{ maxWidth: 1200, margin: "0 auto", padding: 24 }}><Billing /></div>}
+
+      {page === "ads" && (
+        <div style={{ maxWidth: 1200, margin: "0 auto", padding: "24px 28px" }}>
+
+          {/* ALERTAS */}
+          {alerts.length > 0 && (
+            <div style={{ background: "#1a1520", border: "1px solid #3b2020", borderRadius: 10, padding: "16px 20px", marginBottom: 20 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: "#f87171", marginBottom: 10 }}>
+                {alerts.length} cuenta{alerts.length > 1 ? "s" : ""} necesita{alerts.length > 1 ? "n" : ""} atencion
               </div>
+              {alerts.map((a, i) => (
+                <div key={i} style={{ display: "flex", gap: 12, alignItems: "flex-start", padding: "8px 0", borderTop: i > 0 ? "1px solid #2a1a1a" : "none" }}>
+                  <span style={{ fontSize: 12, marginTop: 2, color: a.severity === "critical" ? "#ef4444" : a.severity === "high" ? "#f97316" : "#eab308" }}>●</span>
+                  <div style={{ flex: 1 }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: "#fca5a5" }}>{a.account}</span>
+                    <span style={{ fontSize: 12, color: "#a8a8b3", marginLeft: 8 }}>{a.message}</span>
+                    <div style={{ fontSize: 11, color: "#71717a", marginTop: 3 }}>→ {a.suggestion}</div>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
-        </div>
-      </header>
 
-      <main style={{ maxWidth: 1280, margin: "0 auto", padding: "24px 24px 48px" }}>
-        {page === "billing" && <Billing />}
-
-        {page === "dashboard" && <>
-          {/* Section 1: Alert Banner */}
-          {insights && insights.alerts.length > 0 && (
-            <AlertBanner alerts={insights.alerts} />
-          )}
-
-          {/* Section 2: KPI Cards with Trends */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 16, marginBottom: 32 }}>
-            <KPICard
-              icon={<DollarSign size={18} />}
-              label="Gasto COP"
-              value={fmt(data.totalSpendCOP, "COP")}
-              accent={C.red}
-              trend={wow?.spendChange}
-              trendGoodWhenDown={true}
-            />
-            <KPICard
-              icon={<DollarSign size={18} />}
-              label="Gasto USD"
-              value={fmt(data.totalSpendUSD, "USD")}
-              accent={C.orange}
-              trend={wow?.spendChange}
-              trendGoodWhenDown={true}
-            />
-            <KPICard
-              icon={<Users size={18} />}
-              label="Leads"
-              value={String(data.totalLeads)}
-              accent={C.blue}
-              trend={wow?.leadsChange}
-              trendGoodWhenDown={false}
-            />
-            <KPICard
-              icon={<MessageCircle size={18} />}
-              label="Chats WA"
-              value={String(data.totalChats)}
-              accent={C.green}
-              trend={wow?.leadsChange}
-              trendGoodWhenDown={false}
-            />
-            <KPICard
-              icon={<ShoppingCart size={18} />}
-              label="Ventas"
-              value={String(data.totalVentas)}
-              accent={C.purple}
-              trend={wow?.leadsChange}
-              trendGoodWhenDown={false}
-            />
+          {/* KPIs */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 24 }}>
+            <KPI label="Gasto COP" value={fmtK(totalSpendCOP)} change={wow.spendChange} invertColor />
+            <KPI label="Gasto USD" value={fmt(totalSpendUSD, "USD")} />
+            <KPI label="Leads" value={String(totalLeads)} change={wow.leadsChange} />
+            <KPI label="Chats WA" value={String(totalChats)} />
+            <KPI label="Ventas" value={String(totalVentas)} />
           </div>
 
-          {/* Section 3: Performance Overview - Accounts Table */}
-          {insights && insights.performanceScores.length > 0 && (
-            <section style={{ marginBottom: 32 }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-                <h2 style={{ fontSize: 16, fontWeight: 600, display: "flex", alignItems: "center", gap: 8 }}>
-                  Performance Overview
-                  <span style={{ fontSize: 12, color: C.textSec, fontWeight: 400 }}>
-                    ({insights.performanceScores.length} cuentas)
-                  </span>
-                </h2>
-                <div style={{ display: "flex", alignItems: "center", gap: 16, fontSize: 12, color: C.textSec }}>
-                  <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: C.green, display: "inline-block" }} /> Bien ({insights.topPerformers.length})
-                  </span>
-                  <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: C.yellow, display: "inline-block" }} /> Atencion ({insights.performanceScores.filter(p => p.status === "warning").length})
-                  </span>
-                  <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: C.red, display: "inline-block" }} /> Critico ({insights.performanceScores.filter(p => p.status === "bad").length})
-                  </span>
+          {/* TABLA PRINCIPAL */}
+          <div style={{ background: "#16161e", borderRadius: 10, border: "1px solid #1c1c28", overflow: "hidden" }}>
+            <div style={{ padding: "14px 20px", borderBottom: "1px solid #1c1c28", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: 14, fontWeight: 600 }}>Rendimiento por cuenta</span>
+              <span style={{ fontSize: 11, color: "#71717a" }}>Ultimos {days} dias — click para ver detalle</span>
+            </div>
+
+            {/* Header */}
+            <div style={{ display: "grid", gridTemplateColumns: "28px 1fr 80px 80px 80px 60px 80px 70px", gap: 0, padding: "10px 20px", borderBottom: "1px solid #1c1c28", fontSize: 10, color: "#52525b", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
+              <span></span>
+              <span>Cuenta</span>
+              <span style={{ textAlign: "right" }}>Gasto</span>
+              <span style={{ textAlign: "right" }}>Conv.</span>
+              <span style={{ textAlign: "right" }}>Costo/Conv</span>
+              <span style={{ textAlign: "right" }}>CTR</span>
+              <span style={{ textAlign: "right" }}>Tendencia</span>
+              <span style={{ textAlign: "center" }}>Score</span>
+            </div>
+
+            {/* Meta rows */}
+            {metaScores.sort((a, b) => b.spend - a.spend).map(acc => (
+              <AccountRow key={acc.accountId} acc={acc} expanded={expandedRow === acc.accountId}
+                onToggle={() => setExpandedRow(expandedRow === acc.accountId ? null : acc.accountId)}
+                alerts={insights.alerts.filter(a => a.accountId === acc.accountId)} days={days} />
+            ))}
+
+            {/* Google section */}
+            {googleScores.length > 0 && (
+              <>
+                <div style={{ padding: "10px 20px", fontSize: 11, color: "#52525b", borderTop: "1px solid #1c1c28", background: "#12121a", fontWeight: 600, letterSpacing: "0.05em" }}>
+                  GOOGLE ADS
                 </div>
-              </div>
-              <AccountsTable
-                accounts={insights.performanceScores}
-                alerts={insights.alerts}
-                days={days}
-              />
-            </section>
-          )}
-
-          {/* Section 4: Account Detail Cards (smaller, 4 columns) */}
-          {metaAccounts.length > 0 && (
-            <section style={{ marginBottom: 32 }}>
-              <h2 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, display: "flex", alignItems: "center", gap: 8, color: C.textSec }}>
-                <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.blue, display: "inline-block" }} />
-                Meta Ads
-                <span style={{ fontSize: 11, fontWeight: 400 }}>({metaAccounts.length})</span>
-              </h2>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
-                {metaAccounts.map(acc => <AccountCard key={acc.id} account={acc} days={days} />)}
-              </div>
-            </section>
-          )}
-
-          {googleAccounts.length > 0 && (
-            <section style={{ marginBottom: 32 }}>
-              <h2 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, display: "flex", alignItems: "center", gap: 8, color: C.textSec }}>
-                <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.yellow, display: "inline-block" }} />
-                Google Ads
-                <span style={{ fontSize: 11, fontWeight: 400 }}>({googleAccounts.length})</span>
-              </h2>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
-                {googleAccounts.map(acc => <AccountCard key={acc.id} account={acc} days={days} />)}
-              </div>
-            </section>
-          )}
-        </>}
-      </main>
-    </div>
-  );
-}
-
-function NavButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 6,
-        padding: "6px 14px",
-        borderRadius: 6,
-        fontSize: 13,
-        fontWeight: 500,
-        background: active ? C.blue : "transparent",
-        color: active ? "#ffffff" : C.textSec,
-        border: "none",
-        transition: "all 0.15s ease",
-        cursor: "pointer",
-      }}
-    >
-      {children}
-    </button>
-  );
-}
-
-function KPICard({
-  icon,
-  label,
-  value,
-  accent,
-  trend,
-  trendGoodWhenDown,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  accent: string;
-  trend?: string;
-  trendGoodWhenDown?: boolean;
-}) {
-  const trendNum = trend ? parsePctStr(trend) : 0;
-  const isPositive = trendNum > 0;
-  const isGood = trendGoodWhenDown ? !isPositive : isPositive;
-  const trendColor = trendNum === 0 ? C.textSec : isGood ? C.green : C.red;
-
-  return (
-    <div style={{
-      background: C.card,
-      borderRadius: 10,
-      padding: "18px 20px",
-      border: `1px solid ${C.border}`,
-      transition: "border-color 0.15s ease",
-    }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-        <span style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          width: 32,
-          height: 32,
-          borderRadius: 8,
-          background: accent + "18",
-          color: accent,
-        }}>
-          {icon}
-        </span>
-        <span style={{ fontSize: 11, color: C.textSec, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 500 }}>{label}</span>
-      </div>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-        <p style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-0.02em" }}>{value}</p>
-        {trend && trendNum !== 0 && (
-          <span style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 3,
-            fontSize: 12,
-            fontWeight: 600,
-            color: trendColor,
-            padding: "2px 6px",
-            borderRadius: 4,
-            background: trendColor + "15",
-          }}>
-            {isPositive ? (
-              <TrendingUp size={12} />
-            ) : (
-              <TrendingDown size={12} />
+                {googleScores.map(acc => (
+                  <AccountRow key={acc.accountId} acc={acc} expanded={expandedRow === acc.accountId}
+                    onToggle={() => setExpandedRow(expandedRow === acc.accountId ? null : acc.accountId)}
+                    alerts={insights.alerts.filter(a => a.accountId === acc.accountId)} days={days} />
+                ))}
+              </>
             )}
-            {trend}
-          </span>
-        )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function KPI({ label, value, change, invertColor }: { label: string; value: string; change?: string; invertColor?: boolean }) {
+  const isNeg = change?.startsWith("-");
+  const isGood = invertColor ? isNeg : !isNeg;
+  const changeColor = !change ? "#52525b" : isGood ? "#4ade80" : "#f87171";
+  return (
+    <div style={{ background: "#16161e", borderRadius: 10, border: "1px solid #1c1c28", padding: "16px 18px" }}>
+      <div style={{ fontSize: 11, color: "#71717a", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</div>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+        <span style={{ fontSize: 22, fontWeight: 700, color: "#fff" }}>{value}</span>
+        {change && <span style={{ fontSize: 12, fontWeight: 500, color: changeColor }}>{change}</span>}
       </div>
     </div>
   );
 }
+
+function AccountRow({ acc, expanded, onToggle, alerts, days }: { acc: any; expanded: boolean; onToggle: () => void; alerts: any[]; days: number }) {
+  const [metrics, setMetrics] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (expanded && metrics.length === 0) {
+      fetch(`/api/metrics/${acc.accountId}?days=${days}`).then(r => r.json()).then(setMetrics);
+    }
+  }, [expanded]);
+
+  const s = acc.currency === "USD" ? "US$" : "$";
+  const fmtV = (v: number) => acc.currency === "USD" ? v.toFixed(2) : Math.round(v).toLocaleString("es-CO");
+
+  const statusColor = acc.score >= 70 ? "#4ade80" : acc.score >= 40 ? "#fbbf24" : "#f87171";
+  const tipoLabel: Record<string, string> = { leads: "Leads", whatsapp: "Chats", ventas: "Ventas" };
+  const tipoColor: Record<string, string> = { leads: "#3b82f6", whatsapp: "#22c55e", ventas: "#a855f7" };
+
+  const trendText = acc.trend || "";
+  const trendUp = trendText.includes("\u2191");
+  const trendColor = trendText.includes("sin datos") ? "#52525b" : trendUp ? "#f87171" : "#4ade80";
+
+  return (
+    <>
+      <div onClick={onToggle} style={{
+        display: "grid", gridTemplateColumns: "28px 1fr 80px 80px 80px 60px 80px 70px",
+        gap: 0, padding: "12px 20px", borderBottom: "1px solid #1c1c28", cursor: "pointer",
+        fontSize: 13, alignItems: "center", background: expanded ? "#1a1a26" : "transparent", transition: "background 0.1s",
+      }}>
+        <span style={{ width: 10, height: 10, borderRadius: "50%", background: statusColor, display: "inline-block" }} />
+        <div>
+          <span style={{ fontWeight: 500, color: "#e4e4e7" }}>{acc.name}</span>
+          <span style={{ fontSize: 9, fontWeight: 600, marginLeft: 8, padding: "2px 6px", borderRadius: 3, background: (tipoColor[acc.tipo] || "#555") + "20", color: tipoColor[acc.tipo] || "#888", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+            {tipoLabel[acc.tipo] || acc.tipo}
+          </span>
+        </div>
+        <span style={{ textAlign: "right", fontWeight: 600, color: "#e4e4e7" }}>{acc.spend > 0 ? `${s}${fmtV(acc.spend)}` : "—"}</span>
+        <span style={{ textAlign: "right", fontWeight: 600, color: acc.conversions > 0 ? "#fff" : "#52525b" }}>{acc.conversions > 0 ? acc.conversions : "—"}</span>
+        <span style={{ textAlign: "right", color: "#a1a1aa" }}>{acc.conversions > 0 ? `${s}${fmtV(acc.costPerConv)}` : "—"}</span>
+        <span style={{ textAlign: "right", color: "#a1a1aa" }}>{acc.ctr > 0 ? `${acc.ctr.toFixed(1)}%` : "—"}</span>
+        <span style={{ textAlign: "right", fontSize: 11, fontWeight: 500, color: trendColor }}>
+          {trendText.replace("CPL ", "").replace("\u2191", "\u25B2 ").replace("\u2193", "\u25BC ")}
+        </span>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+          <div style={{ width: 40, height: 5, borderRadius: 3, background: "#27272a", overflow: "hidden" }}>
+            <div style={{ width: `${acc.score}%`, height: "100%", borderRadius: 3, background: statusColor }} />
+          </div>
+          <span style={{ fontSize: 11, fontWeight: 600, color: statusColor, minWidth: 20, textAlign: "right" }}>{acc.score}</span>
+        </div>
+      </div>
+
+      {expanded && (
+        <div style={{ padding: "16px 20px 16px 48px", borderBottom: "1px solid #1c1c28", background: "#12121a" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+            <div>
+              <div style={{ fontSize: 11, color: "#71717a", marginBottom: 8, fontWeight: 600 }}>GASTO DIARIO</div>
+              <div style={{ display: "flex", alignItems: "flex-end", gap: 2, height: 50 }}>
+                {metrics.map((m, i) => {
+                  const maxSpend = Math.max(...metrics.map(x => Number(x.spend)), 1);
+                  const h = (Number(m.spend) / maxSpend) * 50;
+                  return <div key={i} title={`${m.date}: ${s}${fmtV(Number(m.spend))}`} style={{
+                    flex: 1, height: Math.max(h, 2), background: tipoColor[acc.tipo] || "#3b82f6",
+                    borderRadius: "2px 2px 0 0", opacity: 0.7,
+                  }} />;
+                })}
+              </div>
+              {metrics.length > 0 && (
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: "#52525b", marginTop: 4 }}>
+                  <span>{metrics[0]?.date?.slice(5)}</span>
+                  <span>{metrics[metrics.length - 1]?.date?.slice(5)}</span>
+                </div>
+              )}
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: "#71717a", marginBottom: 8, fontWeight: 600 }}>DIAGNOSTICO</div>
+              {alerts.length > 0 ? alerts.map((a, i) => (
+                <div key={i} style={{ fontSize: 12, marginBottom: 8 }}>
+                  <div style={{ color: a.severity === "critical" ? "#ef4444" : a.severity === "high" ? "#f97316" : "#eab308" }}>● {a.message}</div>
+                  <div style={{ color: "#71717a", fontSize: 11, marginTop: 2 }}>→ {a.suggestion}</div>
+                </div>
+              )) : (
+                <div style={{ fontSize: 12, color: "#4ade80" }}>✓ Cuenta funcionando bien</div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+const S = {
+  center: { minHeight: "100vh", background: "#0f1117", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column" as const, color: "#71717a", gap: 12 },
+  spinner: { width: 28, height: 28, border: "3px solid #27272a", borderTopColor: "#3b82f6", borderRadius: "50%", animation: "spin 0.7s linear infinite" },
+};
