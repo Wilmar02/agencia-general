@@ -77,12 +77,12 @@ export default function App() {
         </div>
         {page === "ads" && (
           <div style={{ display: "flex", gap: 2, background: "#1a1a26", borderRadius: 8, padding: 3 }}>
-            {[7, 14, 30].map(d => (
-              <button key={d} onClick={() => setDays(d)} style={{
+            {[{v:1,l:"Hoy"},{v:3,l:"3d"},{v:7,l:"7d"},{v:14,l:"14d"},{v:30,l:"30d"}].map(d => (
+              <button key={d.v} onClick={() => setDays(d.v)} style={{
                 padding: "6px 14px", borderRadius: 6, fontSize: 12, fontWeight: 500, border: "none",
-                background: days === d ? "#27272a" : "transparent",
-                color: days === d ? "#fff" : "#71717a",
-              }}>{d}d</button>
+                background: days === d.v ? "#27272a" : "transparent",
+                color: days === d.v ? "#fff" : "#71717a",
+              }}>{d.l}</button>
             ))}
           </div>
         )}
@@ -125,7 +125,7 @@ export default function App() {
           <div style={{ background: "#16161e", borderRadius: 10, border: "1px solid #1c1c28", overflow: "hidden" }}>
             <div style={{ padding: "14px 20px", borderBottom: "1px solid #1c1c28", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <span style={{ fontSize: 14, fontWeight: 600 }}>Rendimiento por cuenta</span>
-              <span style={{ fontSize: 11, color: "#71717a" }}>Ultimos {days} dias — click para ver detalle</span>
+              <span style={{ fontSize: 11, color: "#71717a" }}>{days === 1 ? "Hoy" : `Ultimos ${days} dias`} — click para ver detalle</span>
             </div>
 
             {/* Header */}

@@ -87,7 +87,12 @@ export default function Billing() {
   useEffect(() => {
     fetch("/api/billing/summary").then(r => r.json()).then(setSummary);
     fetch(`/api/billing/calendar?month=${month}`).then(r => r.json()).then(setCalendar);
-    fetch(`/api/billing/invoices?month=${month}`).then(r => r.json()).then(setInvoices);
+    fetch(`/api/billing/invoices?month=${month}`).then(r => r.json()).then(data => {
+      setInvoices(data.map((inv: any) => ({
+        ...inv,
+        items: typeof inv.items === "string" ? JSON.parse(inv.items) : inv.items,
+      })));
+    });
     fetch("/api/billing/clients").then(r => r.json()).then(setClients);
   }, []);
 
@@ -98,6 +103,7 @@ export default function Billing() {
       body: JSON.stringify({ client_id: clientId, items }),
     });
     const inv = await res.json();
+    inv.items = typeof inv.items === "string" ? JSON.parse(inv.items) : inv.items;
     setInvoices(prev => [{ ...inv, client_name: clients.find(c => c.id === clientId)?.name || "" }, ...prev]);
     setShowCreate(false);
     fetch("/api/billing/summary").then(r => r.json()).then(setSummary);
