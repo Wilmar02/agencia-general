@@ -34,7 +34,7 @@ app.get("/api/dashboard", async (req, res) => {
       CASE WHEN SUM(m.spend) > 0 AND SUM(m.conv_value) > 0 THEN SUM(m.conv_value) / SUM(m.spend) ELSE 0 END as roas,
       CASE WHEN SUM(m.impressions) > 0 THEN (SUM(m.clicks)::numeric / SUM(m.impressions) * 100) ELSE 0 END as ctr
     FROM ad_accounts a
-    LEFT JOIN metrics_daily m ON m.ad_account_id = a.id AND m.date >= CURRENT_DATE - ${days}
+    LEFT JOIN metrics_daily m ON m.ad_account_id = a.id AND m.date >= CURRENT_DATE - ${days}::int
     WHERE a.active = true
     GROUP BY a.id, a.name, a.platform, a.currency, a.tipo
     ORDER BY spend DESC
@@ -55,7 +55,7 @@ app.get("/api/metrics/:accountId", async (req, res) => {
   const rows = await sql`
     SELECT * FROM metrics_daily
     WHERE ad_account_id = ${req.params.accountId}
-    AND date >= CURRENT_DATE - ${days}
+    AND date >= CURRENT_DATE - ${days}::int
     ORDER BY date ASC
   `;
   res.json(rows);
@@ -71,7 +71,7 @@ app.get("/api/campaigns/:accountId", async (req, res) => {
       CASE WHEN SUM(conversions) > 0 THEN SUM(spend)/SUM(conversions) ELSE 0 END as cost_per_conv
     FROM campaigns_daily
     WHERE ad_account_id = ${req.params.accountId}
-    AND date >= CURRENT_DATE - ${days}
+    AND date >= CURRENT_DATE - ${days}::int
     GROUP BY campaign_name, campaign_id
     ORDER BY spend DESC
   `;
