@@ -27,14 +27,32 @@ export default function App() {
   const [days, setDays] = useState(7);
   const [loading, setLoading] = useState(true);
   const [expandedRow, setExpandedRow] = useState<number | null>(null);
+  const [lastSync, setLastSync] = useState("");
+  const [syncing, setSyncing] = useState(false);
 
-  useEffect(() => {
+  const loadData = () => {
     setLoading(true);
-    fetch(`/api/insights?days=${days}`)
-      .then(r => r.json())
-      .then(d => { setInsights(d); setLoading(false); })
-      .catch(() => setLoading(false));
-  }, [days]);
+    Promise.all([
+      fetch(`/api/insights?days=${days}`).then(r => r.json()),
+      fetch("/api/sync/status").then(r => r.json()),
+    ]).then(([d, s]) => {
+      setInsights(d);
+      if (s.lastSync) {
+        const ago = Math.round((Date.now() - new Date(s.lastSync).getTime()) / 60000);
+        setLastSync(ago < 1 ? "ahora" : ago < 60 ? `hace ${ago}m` : `hace ${Math.round(ago / 60)}h`);
+      }
+      setLoading(false);
+    }).catch(() => setLoading(false));
+  };
+
+  useEffect(loadData, [days]);
+
+  const forceSync = () => {
+    setSyncing(true);
+    fetch("/api/sync/now", { method: "POST" }).then(() => {
+      setTimeout(() => { setSyncing(false); loadData(); }, 15000); // wait 15s for sync
+    });
+  };
 
   if (loading) return (
     <div style={S.center}>
@@ -76,14 +94,23 @@ export default function App() {
           </div>
         </div>
         {page === "ads" && (
-          <div style={{ display: "flex", gap: 2, background: "#1a1a26", borderRadius: 8, padding: 3 }}>
-            {[{v:1,l:"Hoy"},{v:3,l:"3d"},{v:7,l:"7d"},{v:14,l:"14d"},{v:30,l:"30d"}].map(d => (
-              <button key={d.v} onClick={() => setDays(d.v)} style={{
-                padding: "6px 14px", borderRadius: 6, fontSize: 12, fontWeight: 500, border: "none",
-                background: days === d.v ? "#27272a" : "transparent",
-                color: days === d.v ? "#fff" : "#71717a",
-              }}>{d.l}</button>
-            ))}
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ display: "flex", gap: 2, background: "#1a1a26", borderRadius: 8, padding: 3 }}>
+              {[{v:1,l:"Hoy"},{v:3,l:"3d"},{v:7,l:"7d"},{v:14,l:"14d"},{v:30,l:"30d"}].map(d => (
+                <button key={d.v} onClick={() => setDays(d.v)} style={{
+                  padding: "6px 14px", borderRadius: 6, fontSize: 12, fontWeight: 500, border: "none",
+                  background: days === d.v ? "#27272a" : "transparent",
+                  color: days === d.v ? "#fff" : "#71717a",
+                }}>{d.l}</button>
+              ))}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 10, color: "#52525b" }}>Sync: {lastSync}</span>
+              <button onClick={forceSync} disabled={syncing} style={{
+                padding: "5px 10px", borderRadius: 6, fontSize: 11, fontWeight: 500, border: "1px solid #27272a",
+                background: syncing ? "#1a1a26" : "transparent", color: syncing ? "#52525b" : "#71717a",
+              }}>{syncing ? "Sincronizando..." : "↻ Sync"}</button>
+            </div>
           </div>
         )}
       </nav>

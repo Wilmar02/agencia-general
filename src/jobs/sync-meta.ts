@@ -3,36 +3,27 @@ import "dotenv/config";
 
 const META_TOKEN = process.env.META_ACCESS_TOKEN!;
 const API_VERSION = "v21.0";
-const FIELDS = "account_name,spend,impressions,clicks,reach,actions,action_values,cost_per_action_type,cpm,cpc,ctr";
+const FIELDS = "account_name,spend,impressions,clicks,reach,actions,action_values,cost_per_action_type,cpm,cpc,ctr,frequency";
+const CAMP_FIELDS = "campaign_name,campaign_id,spend,impressions,clicks,reach,actions,action_values,cpm,cpc,ctr,frequency,objective";
 
-interface MetaInsight {
-  spend: string;
-  impressions: string;
-  clicks: string;
-  reach: string;
-  ctr: string;
-  cpm: string;
-  cpc: string;
-  actions?: { action_type: string; value: string }[];
-  action_values?: { action_type: string; value: string }[];
-  date_start: string;
+function toDate(d: Date) {
+  return d.toISOString().slice(0, 10);
 }
 
-function extractConversions(actions: MetaInsight["actions"], tipo: string) {
-  if (!actions) return { conversions: 0, convValue: 0 };
-  let conv = 0;
-  const leadTypes = ["lead", "onsite_conversion.lead_grouped", "onsite_conversion.total_messaging_connection", "onsite_conversion.messaging_conversation_started_7d"];
+function extractConversions(actions: any[] | undefined, tipo: string) {
+  if (!actions) return 0;
   const chatTypes = ["onsite_conversion.messaging_conversation_started_7d", "onsite_conversion.total_messaging_connection", "onsite_conversion.messaging_first_reply"];
   const purchaseTypes = ["purchase", "omni_purchase", "offsite_conversion.fb_pixel_purchase"];
-
+  const leadTypes = ["lead", "onsite_conversion.lead_grouped", ...chatTypes];
   const types = tipo === "whatsapp" ? chatTypes : tipo === "ventas" ? purchaseTypes : leadTypes;
+  let conv = 0;
   for (const a of actions) {
     if (types.includes(a.action_type)) conv += parseInt(a.value) || 0;
   }
-  return { conversions: conv, convValue: 0 };
+  return conv;
 }
 
-function extractConvValue(actionValues: MetaInsight["action_values"]) {
+function extractConvValue(actionValues: any[] | undefined) {
   if (!actionValues) return 0;
   let total = 0;
   for (const av of actionValues) {
@@ -43,22 +34,36 @@ function extractConvValue(actionValues: MetaInsight["action_values"]) {
   return total;
 }
 
-async function syncMeta() {
-  const accounts = await sql`SELECT * FROM ad_accounts WHERE platform = 'meta' AND active = true`;
-  console.log(`Sincronizando ${accounts.length} cuentas Meta...`);
+async function fetchAllPages(url: string): Promise<any[]> {
+  const all: any[] = [];
+  let nextUrl: string | null = url;
+  while (nextUrl) {
+    const res = await fetch(nextUrl, { signal: AbortSignal.timeout(20000) });
+    const json = await res.json();
+    if (json.error) throw new Error(json.error.message);
+    if (json.data) all.push(...json.data);
+    nextUrl = json.paging?.next || null;
+  }
+  return all;
+}
 
+async function syncMeta(daysBack = 30) {
+  const accounts = await sql`SELECT * FROM ad_accounts WHERE platform = 'meta' AND active = true`;
+  const now = new Date();
+  const since = toDate(new Date(now.getTime() - daysBack * 86400000));
+  const until = toDate(now);
+
+  console.log(`Sincronizando ${accounts.length} cuentas Meta [${since} → ${until}]...`);
+
+  // ── ACCOUNT LEVEL ──
   for (const acc of accounts) {
     try {
-      const url = `https://graph.facebook.com/${API_VERSION}/${acc.account_id}/insights?fields=${FIELDS}&date_preset=last_30d&time_increment=1&access_token=${META_TOKEN}`;
-      const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
-      const json = await res.json();
+      const url = `https://graph.facebook.com/${API_VERSION}/${acc.account_id}/insights?fields=${FIELDS}&time_range={"since":"${since}","until":"${until}"}&time_increment=1&access_token=${META_TOKEN}`;
+      const data = await fetchAllPages(url);
 
-      if (!json.data?.length) {
-        console.log(`  ⏭ ${acc.name}: sin datos`);
-        continue;
-      }
+      if (!data.length) { console.log(`  ⏭ ${acc.name}: sin datos`); continue; }
 
-      for (const day of json.data as MetaInsight[]) {
+      for (const day of data) {
         const spend = parseFloat(day.spend) || 0;
         const impressions = parseInt(day.impressions) || 0;
         const clicks = parseInt(day.clicks) || 0;
@@ -66,7 +71,7 @@ async function syncMeta() {
         const ctr = parseFloat(day.ctr) || 0;
         const cpm = parseFloat(day.cpm) || 0;
         const cpc = parseFloat(day.cpc) || 0;
-        const { conversions } = extractConversions(day.actions, acc.tipo);
+        const conversions = extractConversions(day.actions, acc.tipo);
         const convValue = extractConvValue(day.action_values);
         const costPerConv = conversions > 0 ? spend / conversions : 0;
         const roas = spend > 0 && convValue > 0 ? convValue / spend : 0;
@@ -78,31 +83,28 @@ async function syncMeta() {
           DO UPDATE SET spend=${spend}, impressions=${impressions}, clicks=${clicks}, reach=${reach}, ctr=${ctr}, cpm=${cpm}, cpc=${cpc}, conversions=${conversions}, cost_per_conv=${costPerConv}, roas=${roas}, conv_value=${convValue}, raw_data=${JSON.stringify(day)}, synced_at=now()
         `;
       }
-      console.log(`  ✓ ${acc.name}: ${json.data.length} días`);
+      console.log(`  ✓ ${acc.name}: ${data.length} días`);
     } catch (err: any) {
       console.error(`  ✗ ${acc.name}: ${err.message}`);
     }
   }
 
-  // ── CAMPAIGNS ──
-  console.log(`\nSincronizando campañas...`);
-  const CAMP_FIELDS = "campaign_name,campaign_id,spend,impressions,clicks,reach,actions,action_values,cpm,cpc,ctr";
-
+  // ── CAMPAIGN LEVEL ──
+  console.log(`\nSincronizando campañas [${since} → ${until}]...`);
   for (const acc of accounts) {
     try {
-      const url = `https://graph.facebook.com/${API_VERSION}/${acc.account_id}/insights?fields=${CAMP_FIELDS}&date_preset=last_30d&time_increment=1&level=campaign&limit=500&access_token=${META_TOKEN}`;
-      const res = await fetch(url, { signal: AbortSignal.timeout(30000) });
-      const json = await res.json();
+      const url = `https://graph.facebook.com/${API_VERSION}/${acc.account_id}/insights?fields=${CAMP_FIELDS}&time_range={"since":"${since}","until":"${until}"}&time_increment=1&level=campaign&limit=500&access_token=${META_TOKEN}`;
+      const data = await fetchAllPages(url);
 
-      if (!json.data?.length) continue;
+      if (!data.length) continue;
 
       let count = 0;
-      for (const row of json.data) {
+      for (const row of data) {
         const spend = parseFloat(row.spend) || 0;
         if (spend === 0) continue;
         const imp = parseInt(row.impressions) || 0;
         const clicks = parseInt(row.clicks) || 0;
-        const { conversions } = extractConversions(row.actions, acc.tipo);
+        const conversions = extractConversions(row.actions, acc.tipo);
         const convValue = extractConvValue(row.action_values);
         const costPerConv = conversions > 0 ? spend / conversions : 0;
         const roas = spend > 0 && convValue > 0 ? convValue / spend : 0;
@@ -122,7 +124,14 @@ async function syncMeta() {
   }
 
   console.log("Sync Meta completado");
-  await sql.end();
 }
 
-syncMeta().catch(console.error);
+// If run directly: full 30-day sync
+// If imported: export for cron use
+const isDirectRun = process.argv[1]?.includes("sync-meta");
+if (isDirectRun) {
+  const days = parseInt(process.argv[2] || "30");
+  syncMeta(days).then(() => sql.end()).catch(console.error);
+}
+
+export { syncMeta };

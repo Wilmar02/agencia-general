@@ -99,6 +99,35 @@ app.get("/api/alerts", async (_req, res) => {
   res.json(rows);
 });
 
+// GET /api/sync/status — última sincronización
+app.get("/api/sync/status", async (_req, res) => {
+  const [last] = await sql`SELECT MAX(synced_at) as last_sync FROM metrics_daily`;
+  res.json({ lastSync: last?.last_sync, nextSync: "cada hora en punto" });
+});
+
+// POST /api/sync/now — forzar sync manual (últimos 3 días)
+app.post("/api/sync/now", async (_req, res) => {
+  try {
+    const { syncMeta } = await import("../jobs/sync-meta.js");
+    syncMeta(3).catch(console.error); // async, no esperar
+    res.json({ ok: true, message: "Sync iniciado (últimos 3 días)" });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Auto-sync cada hora (últimos 3 días para capturar correcciones de Meta)
+cron.schedule("0 * * * *", async () => {
+  console.log(`[CRON] Auto-sync iniciado ${new Date().toISOString()}`);
+  try {
+    const { syncMeta } = await import("../jobs/sync-meta.js");
+    await syncMeta(3);
+    console.log(`[CRON] Auto-sync completado`);
+  } catch (err: any) {
+    console.error(`[CRON] Error: ${err.message}`);
+  }
+});
+
 // SPA fallback
 app.use((_req, res) => {
   res.sendFile(path.join(__dirname, "../../dist/index.html"));
@@ -106,4 +135,5 @@ app.use((_req, res) => {
 
 app.listen(PORT, () => {
   console.log(`API corriendo en http://localhost:${PORT}`);
+  console.log(`Auto-sync Meta: cada hora (últimos 3 días)`);
 });
